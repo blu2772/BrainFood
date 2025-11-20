@@ -13,6 +13,7 @@ final class AppViewModel: ObservableObject {
     @Published var userId: String?
     @Published var boxId: String?
     @Published var boxes: [Box] = []
+    @Published var token: String?
 
     private let api = APIService.shared
     private let fsrs = FSRSCalculator()
@@ -20,8 +21,10 @@ final class AppViewModel: ObservableObject {
     init() {
         self.userId = UserDefaults.standard.string(forKey: "brainfood_userId")
         self.boxId = UserDefaults.standard.string(forKey: "brainfood_boxId")
+        self.token = UserDefaults.standard.string(forKey: "brainfood_token")
         api.userId = self.userId
         api.boxId = self.boxId
+        api.token = self.token
     }
 
     var dueCards: [Card] {
@@ -44,7 +47,7 @@ final class AppViewModel: ObservableObject {
                 cards = fetched
             }
         } catch {
-            self.error = error.localizedDescription
+            self.error = translateError(error)
         }
         isLoading = false
     }
@@ -63,7 +66,7 @@ final class AppViewModel: ObservableObject {
                 }
             }
         } catch {
-            self.error = error.localizedDescription
+            self.error = translateError(error)
         }
     }
 
@@ -75,19 +78,13 @@ final class AppViewModel: ObservableObject {
                 cards.append(created)
             }
         } catch {
-            self.error = error.localizedDescription
+            self.error = translateError(error)
         }
     }
 
     func createUser(name: String) async {
-        do {
-            let user = try await api.createUser(name: name)
-            self.userId = user.id
-            api.userId = user.id
-            UserDefaults.standard.set(user.id, forKey: "brainfood_userId")
-        } catch {
-            self.error = error.localizedDescription
-        }
+        // Deprecated in favor of auth/register
+        await register(name: name, email: "\(UUID().uuidString)@placeholder.local", password: UUID().uuidString)
     }
 
     func createBox(name: String) async {
@@ -102,7 +99,7 @@ final class AppViewModel: ObservableObject {
             api.boxId = box.id
             UserDefaults.standard.set(box.id, forKey: "brainfood_boxId")
         } catch {
-            self.error = error.localizedDescription
+            self.error = translateError(error)
         }
     }
 
@@ -111,7 +108,92 @@ final class AppViewModel: ObservableObject {
         do {
             boxes = try await api.listBoxes(userId: userId)
         } catch {
-            self.error = error.localizedDescription
+            self.error = translateError(error)
         }
+    }
+
+    func register(name: String, email: String, password: String) async {
+        do {
+            error = nil
+            let auth = try await api.register(name: name, email: email, password: password)
+            applyAuth(auth, userId: auth.user.id, boxId: nil)
+            await loadBoxes()
+        } catch {
+            self.error = translateError(error)
+        }
+    }
+
+    func login(email: String, password: String) async {
+        do {
+            error = nil
+            let auth = try await api.login(email: email, password: password)
+            applyAuth(auth, userId: auth.user.id, boxId: nil)
+            await loadBoxes()
+        } catch {
+            self.error = translateError(error)
+        }
+    }
+
+    func selectBox(_ box: Box) {
+        self.boxId = box.id
+        api.boxId = box.id
+        UserDefaults.standard.set(box.id, forKey: "brainfood_boxId")
+    }
+
+    func logout() {
+        userId = nil
+        boxId = nil
+        token = nil
+        boxes = []
+        cards = []
+        api.userId = nil
+        api.boxId = nil
+        api.token = nil
+        UserDefaults.standard.removeObject(forKey: "brainfood_userId")
+        UserDefaults.standard.removeObject(forKey: "brainfood_boxId")
+        UserDefaults.standard.removeObject(forKey: "brainfood_token")
+    }
+
+    private func applyAuth(_ auth: AuthResponse, userId: String, boxId: String?) {
+        self.userId = userId
+        self.token = auth.token
+        api.userId = userId
+        api.token = auth.token
+        UserDefaults.standard.set(userId, forKey: "brainfood_userId")
+        UserDefaults.standard.set(auth.token, forKey: "brainfood_token")
+        if let boxId {
+            self.boxId = boxId
+            api.boxId = boxId
+            UserDefaults.standard.set(boxId, forKey: "brainfood_boxId")
+        }
+    }
+    
+    private func translateError(_ error: Error) -> String {
+        if let apiError = error as? APIError {
+            switch apiError {
+            case .server(let message):
+                switch message {
+                case "email_exists":
+                    return "Diese E-Mail-Adresse ist bereits registriert."
+                case "invalid_credentials":
+                    return "E-Mail oder Passwort falsch."
+                case "email_and_password_required", "name_email_password_required":
+                    return "Bitte alle Felder ausfüllen."
+                case "token_invalid_or_expired", "authentication_required":
+                    return "Sitzung abgelaufen. Bitte erneut anmelden."
+                case "forbidden":
+                    return "Zugriff verweigert."
+                default:
+                    return message.replacingOccurrences(of: "_", with: " ").capitalized
+                }
+            case .invalidURL:
+                return "Ungültige Server-URL."
+            case .decoding:
+                return "Antwort konnte nicht gelesen werden."
+            case .unknown:
+                return "Unerwarteter Fehler."
+            }
+        }
+        return error.localizedDescription
     }
 }

@@ -34,11 +34,22 @@ const authorizeToken = (req, res, next) => {
   const bearer = req.header('authorization');
   const tokenParam = req.query.token;
   const token = bearer?.replace(/^Bearer\s+/i, '') || tokenParam;
-  if (!token) return next();
+  if (!token) {
+    req.tokenAuthenticated = false;
+    return next();
+  }
   const found = store.findToken(token);
   if (!found) return res.status(401).json({ error: 'token_invalid_or_expired' });
   req.userId = found.userId;
   req.boxId = found.boxId;
+  req.tokenAuthenticated = true;
+  next();
+};
+
+const requireAuth = (req, res, next) => {
+  if (!req.tokenAuthenticated) {
+    return res.status(401).json({ error: 'authentication_required' });
+  }
   next();
 };
 
@@ -83,9 +94,9 @@ app.post('/auth/login', async (req, res) => {
   res.json({ user: { id: user.id, name: user.name, email: user.email }, token, expiresAt });
 });
 
-app.post('/users/:userId/boxes', authorizeToken, (req, res) => {
+app.post('/users/:userId/boxes', authorizeToken, requireAuth, (req, res) => {
   const { userId } = req.params;
-  if (req.userId && req.userId !== userId) return res.status(403).json({ error: 'forbidden' });
+  if (req.userId !== userId) return res.status(403).json({ error: 'forbidden' });
   const { name } = req.body;
   if (!name) return res.status(400).json({ error: 'name_required' });
   const box = { id: uuid(), userId, name, createdAt: new Date() };
@@ -93,9 +104,9 @@ app.post('/users/:userId/boxes', authorizeToken, (req, res) => {
   res.status(201).json(box);
 });
 
-app.get('/users/:userId/boxes', authorizeToken, (req, res) => {
+app.get('/users/:userId/boxes', authorizeToken, requireAuth, (req, res) => {
   const { userId } = req.params;
-  if (req.userId && req.userId !== userId) return res.status(403).json({ error: 'forbidden' });
+  if (req.userId !== userId) return res.status(403).json({ error: 'forbidden' });
   const db = store.read();
   res.json(db.boxes.filter((b) => b.userId === userId));
 });
@@ -109,7 +120,7 @@ app.post('/tokens', (req, res) => {
   res.status(201).json({ token, userId, boxId, expiresAt });
 });
 
-app.get('/cards', authorizeToken, requireContext, (req, res) => {
+app.get('/cards', authorizeToken, requireAuth, requireContext, (req, res) => {
   const { dueOnly } = req.query;
   const { userId, boxId } = req;
   if (!userId || !boxId) return res.status(400).json({ error: 'userId_and_boxId_required' });
@@ -122,7 +133,7 @@ app.get('/cards', authorizeToken, requireContext, (req, res) => {
   res.json(payload);
 });
 
-app.get('/cards/:id', authorizeToken, requireContext, (req, res) => {
+app.get('/cards/:id', authorizeToken, requireAuth, requireContext, (req, res) => {
   const { userId, boxId } = req;
   const { cards } = store.read();
   const card = cards.find((c) => c.id === req.params.id && c.userId === userId && c.boxId === boxId);
@@ -130,7 +141,7 @@ app.get('/cards/:id', authorizeToken, requireContext, (req, res) => {
   res.json(card);
 });
 
-app.post('/cards', authorizeToken, requireContext, (req, res) => {
+app.post('/cards', authorizeToken, requireAuth, requireContext, (req, res) => {
   const { front, back, tags = [], boxId: bodyBox } = req.body;
   const boxId = bodyBox || req.boxId;
   const userId = req.userId;
@@ -153,7 +164,7 @@ app.post('/cards', authorizeToken, requireContext, (req, res) => {
   res.status(201).json(card);
 });
 
-app.post('/cards/batch', authorizeToken, requireContext, (req, res) => {
+app.post('/cards/batch', authorizeToken, requireAuth, requireContext, (req, res) => {
   const { cards = [] } = req.body;
   const userId = req.userId;
   const boxId = req.boxId;
@@ -180,7 +191,7 @@ app.post('/cards/batch', authorizeToken, requireContext, (req, res) => {
   res.status(201).json(created);
 });
 
-app.put('/cards/:id', authorizeToken, requireContext, (req, res) => {
+app.put('/cards/:id', authorizeToken, requireAuth, requireContext, (req, res) => {
   const { front, back, tags } = req.body;
   const { userId, boxId } = req;
   const updated = store.updateCard(req.params.id, (card) => {
@@ -197,7 +208,7 @@ app.put('/cards/:id', authorizeToken, requireContext, (req, res) => {
   res.json(updated);
 });
 
-app.delete('/cards/:id', authorizeToken, requireContext, (req, res) => {
+app.delete('/cards/:id', authorizeToken, requireAuth, requireContext, (req, res) => {
   const { userId, boxId } = req;
   const db = store.read();
   const card = db.cards.find((c) => c.id === req.params.id && c.userId === userId && c.boxId === boxId);
@@ -206,7 +217,7 @@ app.delete('/cards/:id', authorizeToken, requireContext, (req, res) => {
   res.status(204).send();
 });
 
-app.post('/review', authorizeToken, requireContext, (req, res) => {
+app.post('/review', authorizeToken, requireAuth, requireContext, (req, res) => {
   const { cardId, rating } = req.body;
   const { userId, boxId } = req;
   if (![1, 2, 3, 4].includes(rating)) {
@@ -229,7 +240,7 @@ app.post('/review', authorizeToken, requireContext, (req, res) => {
   res.json(updated);
 });
 
-app.post('/import/pdf', authorizeToken, requireContext, upload.single('file'), async (req, res) => {
+app.post('/import/pdf', authorizeToken, requireAuth, requireContext, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'file_required' });
   const { delimiter = '\n' } = req.body;
   const buffer = fs.readFileSync(req.file.path);

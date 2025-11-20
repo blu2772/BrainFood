@@ -35,6 +35,18 @@ struct Box: Identifiable, Codable, Equatable {
     let name: String
 }
 
+struct AuthResponse: Codable {
+    let user: UserDTO
+    let token: String
+    let expiresAt: Date?
+}
+
+struct UserDTO: Codable {
+    let id: String
+    let name: String
+    let email: String
+}
+
 enum ReviewRating: Int, CaseIterable, Identifiable {
     case again = 1
     case hard = 2
@@ -89,6 +101,7 @@ final class APIService {
     var baseURL: URL
     var userId: String?
     var boxId: String?
+    var token: String?
 
     init(baseURL: URL = URL(string: "https://brainfood.timrmp.de")!) {
         self.baseURL = baseURL
@@ -140,6 +153,30 @@ final class APIService {
         return try JSONDecoder.api.decode(Card.self, from: data)
     }
 
+    func register(name: String, email: String, password: String) async throws -> AuthResponse {
+        let url = baseURL.appendingPathComponent("auth/register")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let payload: [String: Any] = ["name": name, "email": email, "password": password]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        let (data, response) = try await URLSession.shared.data(for: req)
+        try validate(response: response, data: data)
+        return try JSONDecoder.api.decode(AuthResponse.self, from: data)
+    }
+
+    func login(email: String, password: String) async throws -> AuthResponse {
+        let url = baseURL.appendingPathComponent("auth/login")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let payload: [String: Any] = ["email": email, "password": password]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        let (data, response) = try await URLSession.shared.data(for: req)
+        try validate(response: response, data: data)
+        return try JSONDecoder.api.decode(AuthResponse.self, from: data)
+    }
+
     func createUser(name: String) async throws -> User {
         let url = baseURL.appendingPathComponent("users")
         var req = URLRequest(url: url)
@@ -156,16 +193,25 @@ final class APIService {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
         req.httpBody = try JSONSerialization.data(withJSONObject: ["name": name])
+        applyContextHeaders(to: &req)
+        log("POST \(url.absoluteString) name=\(name)")
         let (data, response) = try await URLSession.shared.data(for: req)
         try validate(response: response, data: data)
+        logResponse(response, data: data)
         return try JSONDecoder.api.decode(Box.self, from: data)
     }
 
     func listBoxes(userId: String) async throws -> [Box] {
         let url = baseURL.appendingPathComponent("users/\(userId)/boxes")
-        let (data, response) = try await URLSession.shared.data(from: url)
+        var req = URLRequest(url: url)
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        applyContextHeaders(to: &req)
+        log("GET \(url.absoluteString)")
+        let (data, response) = try await URLSession.shared.data(for: req)
         try validate(response: response, data: data)
+        logResponse(response, data: data)
         return try JSONDecoder.api.decode([Box].self, from: data)
     }
 
@@ -202,6 +248,7 @@ final class APIService {
     private func applyContextHeaders(to request: inout URLRequest) {
         if let userId { request.setValue(userId, forHTTPHeaderField: "x-user-id") }
         if let boxId { request.setValue(boxId, forHTTPHeaderField: "x-box-id") }
+        if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
     }
 }
 

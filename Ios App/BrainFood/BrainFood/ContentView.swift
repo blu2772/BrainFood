@@ -19,21 +19,22 @@ struct ContentView: View {
 	}
 
 	var body: some View {
-		Group {
-			if viewModel.userId == nil || viewModel.boxId == nil {
-				SetupView(viewModel: viewModel) {
-					Task { await viewModel.loadCards() }
-				}
-			} else {
-				TabView {
-					ReviewView(viewModel: viewModel)
-						.tabItem { Label("Lernen", systemImage: "checklist") }
+        Group {
+            if viewModel.token == nil {
+                AuthView(viewModel: viewModel)
+            } else if viewModel.boxId == nil {
+                BoxSelectionView(viewModel: viewModel)
+            } else {
+                TabView {
+                    ReviewView(viewModel: viewModel)
+                        .tabItem { Label("Lernen", systemImage: "checkmark.seal.fill") }
 
-					LibraryView(viewModel: viewModel)
-						.tabItem { Label("Karten", systemImage: "tray.full") }
-				}
-			}
-		}
+                    LibraryView(viewModel: viewModel)
+                        .tabItem { Label("Karten", systemImage: "square.grid.2x2.fill") }
+                }
+                .accentColor(.indigo)
+            }
+        }
 		.task {
 			if viewModel.userId != nil && viewModel.boxId != nil {
 				await viewModel.loadCards()
@@ -52,10 +53,11 @@ struct ContentView: View {
 							.textInputAutocapitalization(.never)
 							.autocorrectionDisabled()
 					}
-					Section(header: Text("Kontext")) {
-						Text("User ID: \(viewModel.userId ?? "–")")
-						Text("Box ID: \(viewModel.boxId ?? "–")")
-					}
+                    Section(header: Text("Kontext")) {
+                        Text("User ID: \(viewModel.userId ?? "–")")
+                        Text("Box ID: \(viewModel.boxId ?? "–")")
+                        Text("Token: \(viewModel.token?.prefix(6) ?? "–")…")
+                    }
 					Section {
 						Button("Übernehmen und Karten neu laden") {
 							if let url = URL(string: baseURLText) {
@@ -75,6 +77,10 @@ struct ContentView: View {
 								.foregroundColor(.secondary)
 								.textSelection(.enabled)
 						}
+                        Button("Logout") {
+                            viewModel.logout()
+                            showSettings = false
+                        }
 					}
 				}
 				.navigationTitle("Einstellungen")
@@ -107,10 +113,10 @@ struct ReviewView: View {
 		viewModel.dueCards.first ?? viewModel.cards.sorted { $0.due < $1.due }.first
 	}
 
-	var body: some View {
+var body: some View {
 		NavigationStack {
 			ZStack {
-				LinearGradient(colors: [.indigo.opacity(0.3), .mint.opacity(0.2)], startPoint: .topLeading, endPoint: .bottomTrailing)
+				LinearGradient(colors: [.indigo.opacity(0.35), .blue.opacity(0.25), .mint.opacity(0.2)], startPoint: .topLeading, endPoint: .bottomTrailing)
 					.ignoresSafeArea()
 
 				VStack(spacing: 16) {
@@ -363,46 +369,160 @@ struct CreateCardSheet: View {
 	}
 }
 
-struct SetupView: View {
-	@ObservedObject var viewModel: AppViewModel
-	var onDone: () -> Void
-	@State private var name = ""
-	@State private var boxName = ""
+struct AuthView: View {
+    @ObservedObject var viewModel: AppViewModel
+    @State private var email = ""
+    @State private var password = ""
+    @State private var name = ""
+    @State private var isRegister = false
+    @State private var isSubmitting = false
 
-	var body: some View {
-		NavigationStack {
-			Form {
-				Section(header: Text("Benutzer")) {
-					if let userId = viewModel.userId {
-						Label("User ID: \(userId)", systemImage: "person.fill.checkmark")
-					} else {
-						TextField("Name", text: $name)
-						Button("Benutzer anlegen") {
-							Task {
-								await viewModel.createUser(name: name)
-								await viewModel.loadBoxes()
-							}
-						}
-						.disabled(name.isEmpty)
-					}
-				}
-				Section(header: Text("Box")) {
-					if let boxId = viewModel.boxId {
-						Label("Aktive Box: \(boxId)", systemImage: "shippingbox.fill")
-					} else {
-						TextField("Box-Name", text: $boxName)
-						Button("Box anlegen") {
-							Task {
-								await viewModel.createBox(name: boxName)
-								await viewModel.loadCards()
-								onDone()
-							}
-						}
-						.disabled(boxName.isEmpty || viewModel.userId == nil)
-					}
-				}
-			}
-			.navigationTitle("Konto einrichten")
-		}
-	}
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                VStack(spacing: 6) {
+                    Text("BrainFood")
+                        .font(.largeTitle.bold())
+                    Text(isRegister ? "Konto erstellen" : "Bitte anmelden")
+                        .foregroundColor(.secondary)
+                }
+                VStack(spacing: 12) {
+                    if isRegister {
+                        TextField("Name", text: $name)
+                            .textFieldStyle(.roundedBorder)
+                            .textInputAutocapitalization(.words)
+                    }
+                    TextField("E-Mail", text: $email)
+                        .textFieldStyle(.roundedBorder)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.emailAddress)
+                    SecureField("Passwort", text: $password)
+                        .textFieldStyle(.roundedBorder)
+                }
+                .padding()
+                .background(Color(.systemGray6))
+                .cornerRadius(12)
+
+                Button {
+                    Task {
+                        isSubmitting = true
+                        defer { isSubmitting = false }
+                        if isRegister {
+                            await viewModel.register(name: name, email: email, password: password)
+                        } else {
+                            await viewModel.login(email: email, password: password)
+                        }
+                    }
+                } label: {
+                    if isSubmitting {
+                        ProgressView().frame(maxWidth: .infinity)
+                    } else {
+                        Text(isRegister ? "Registrieren" : "Anmelden")
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .padding()
+                .background(Color.indigo)
+                .foregroundColor(.white)
+                .cornerRadius(12)
+                .disabled(email.isEmpty || password.isEmpty || (isRegister && name.isEmpty))
+
+                Button(isRegister ? "Bereits Konto? Anmelden" : "Noch kein Konto? Registrieren") {
+                    isRegister.toggle()
+                }
+                .foregroundColor(.indigo)
+
+                if let error = viewModel.error {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundColor(.red)
+                }
+
+                Spacer()
+            }
+            .padding()
+            .navigationTitle(isRegister ? "Registrieren" : "Anmelden")
+        }
+    }
+}
+
+struct BoxSelectionView: View {
+    @ObservedObject var viewModel: AppViewModel
+    @State private var newBoxName = ""
+
+var body: some View {
+        NavigationStack {
+            ZStack {
+                Color(.systemGroupedBackground).ignoresSafeArea()
+                VStack(spacing: 16) {
+                    VStack(spacing: 6) {
+                        Text("Box auswählen")
+                            .font(.title.bold())
+                        Text("Organisiere deine Themen")
+                            .foregroundColor(.secondary)
+                    }
+                    ScrollView {
+                        LazyVStack(spacing: 12) {
+                            ForEach(viewModel.boxes, id: \.id) { box in
+                                Button {
+                                    viewModel.selectBox(box)
+                                    Task { await viewModel.loadCards() }
+                                } label: {
+                                    BoxCard(title: box.name, subtitle: box.id, selected: viewModel.boxId == box.id)
+                                }
+                            }
+                            VStack(spacing: 10) {
+                                TextField("Neue Box", text: $newBoxName)
+                                    .textFieldStyle(.roundedBorder)
+                                Button {
+                                    Task {
+                                        await viewModel.createBox(name: newBoxName)
+                                        await viewModel.loadBoxes()
+                                        newBoxName = ""
+                                    }
+                                } label: {
+                                    Text("Box erstellen")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(newBoxName.isEmpty)
+                            }
+                            .padding()
+                            .background(Color.white)
+                            .cornerRadius(12)
+                            .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
+                        }
+                        .padding()
+                    }
+                }
+                .padding()
+            }
+            .task { await viewModel.loadBoxes() }
+        }
+    }
+}
+
+private struct BoxCard: View {
+    let title: String
+    let subtitle: String
+    let selected: Bool
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.headline)
+                Text(subtitle).font(.caption).foregroundColor(.secondary)
+            }
+            Spacer()
+            if selected {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.indigo)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(selected ? Color.indigo.opacity(0.15) : Color.white.opacity(0.7))
+        .cornerRadius(14)
+        .shadow(color: .black.opacity(0.05), radius: 6, x: 0, y: 4)
+    }
 }
