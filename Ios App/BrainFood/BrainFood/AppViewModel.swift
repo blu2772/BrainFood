@@ -10,9 +10,19 @@ final class AppViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
     @Published var isShowingCreate = false
+    @Published var userId: String?
+    @Published var boxId: String?
+    @Published var boxes: [Box] = []
 
     private let api = APIService.shared
     private let fsrs = FSRSCalculator()
+
+    init() {
+        self.userId = UserDefaults.standard.string(forKey: "brainfood_userId")
+        self.boxId = UserDefaults.standard.string(forKey: "brainfood_boxId")
+        api.userId = self.userId
+        api.boxId = self.boxId
+    }
 
     var dueCards: [Card] {
         let now = Date()
@@ -20,9 +30,15 @@ final class AppViewModel: ObservableObject {
     }
 
     func loadCards(dueOnly: Bool = false) async {
+        guard let userId, let boxId else {
+            self.error = "Bitte zuerst Benutzer und Box festlegen."
+            return
+        }
         isLoading = true
         error = nil
         do {
+            api.userId = userId
+            api.boxId = boxId
             let fetched = try await api.fetchCards(dueOnly: dueOnly)
             withAnimation {
                 cards = fetched
@@ -58,6 +74,42 @@ final class AppViewModel: ObservableObject {
             withAnimation {
                 cards.append(created)
             }
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func createUser(name: String) async {
+        do {
+            let user = try await api.createUser(name: name)
+            self.userId = user.id
+            api.userId = user.id
+            UserDefaults.standard.set(user.id, forKey: "brainfood_userId")
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func createBox(name: String) async {
+        guard let userId else {
+            self.error = "Bitte zuerst Benutzer anlegen."
+            return
+        }
+        do {
+            let box = try await api.createBox(userId: userId, name: name)
+            self.boxes.append(box)
+            self.boxId = box.id
+            api.boxId = box.id
+            UserDefaults.standard.set(box.id, forKey: "brainfood_boxId")
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func loadBoxes() async {
+        guard let userId else { return }
+        do {
+            boxes = try await api.listBoxes(userId: userId)
         } catch {
             self.error = error.localizedDescription
         }

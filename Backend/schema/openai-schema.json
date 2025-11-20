@@ -12,13 +12,144 @@
     }
   ],
   "paths": {
+    "/users": {
+      "post": {
+        "summary": "Create a user",
+        "operationId": "createUser",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "name": { "type": "string" } },
+                "required": ["name"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "User created",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/User" } }
+            }
+          }
+        }
+      }
+    },
+    "/users/{userId}/boxes": {
+      "get": {
+        "summary": "List boxes for a user",
+        "operationId": "listBoxes",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Boxes",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Box" } }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a box for a user",
+        "operationId": "createBox",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "name": { "type": "string" } },
+                "required": ["name"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Box created",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Box" } }
+            }
+          }
+        }
+      }
+    },
+    "/tokens": {
+      "post": {
+        "summary": "Create a temporary GPT access token",
+        "operationId": "createToken",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "userId": { "type": "string" },
+                  "boxId": { "type": "string" },
+                  "ttlMinutes": { "type": "integer" }
+                },
+                "required": ["userId", "boxId"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Token created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": { "type": "string" },
+                    "userId": { "type": "string" },
+                    "boxId": { "type": "string" },
+                    "expiresAt": { "type": "string", "format": "date-time" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/cards": {
       "get": {
-      "summary": "List cards",
-      "operationId": "listCards",
-      "parameters": [
-        {
-          "name": "dueOnly",
+        "summary": "List cards",
+        "operationId": "listCards",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "boxId",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "dueOnly",
             "in": "query",
             "required": false,
             "schema": {
@@ -50,7 +181,17 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateCardRequest"
+                "allOf": [
+                  { "$ref": "#/components/schemas/CreateCardRequest" },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "userId": { "type": "string" },
+                      "boxId": { "type": "string" }
+                    },
+                    "required": ["userId", "boxId"]
+                  }
+                ]
               }
             }
           }
@@ -79,6 +220,8 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "userId": { "type": "string" },
+                  "boxId": { "type": "string" },
                   "cards": {
                     "type": "array",
                     "items": {
@@ -86,7 +229,7 @@
                     }
                   }
                 },
-                "required": ["cards"]
+                "required": ["cards", "userId", "boxId"]
               }
             }
           }
@@ -118,6 +261,8 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "userId": { "type": "string" },
+                  "boxId": { "type": "string" },
                   "cardId": {
                     "type": "string"
                   },
@@ -128,7 +273,7 @@
                     "description": "1=Again, 2=Hard, 3=Good, 4=Easy"
                   }
                 },
-                "required": ["cardId", "rating"]
+                "required": ["cardId", "rating", "userId", "boxId"]
               }
             }
           }
@@ -150,6 +295,25 @@
   },
   "components": {
     "schemas": {
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["id", "name"]
+      },
+      "Box": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "userId": { "type": "string" },
+          "name": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["id", "userId", "name"]
+      },
       "Card": {
         "type": "object",
         "properties": {

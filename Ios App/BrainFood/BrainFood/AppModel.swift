@@ -2,6 +2,8 @@ import Foundation
 
 struct Card: Identifiable, Codable, Equatable {
     let id: String
+    let userId: String?
+    let boxId: String?
     var front: String
     var back: String
     var tags: [String]
@@ -20,6 +22,17 @@ struct ReviewEvent: Codable, Equatable {
     let rating: Int
     let reviewedAt: Date
     let intervalDays: Int?
+}
+
+struct User: Identifiable, Codable, Equatable {
+    let id: String
+    let name: String
+}
+
+struct Box: Identifiable, Codable, Equatable {
+    let id: String
+    let userId: String
+    let name: String
 }
 
 enum ReviewRating: Int, CaseIterable, Identifiable {
@@ -74,16 +87,24 @@ enum APIError: Error, LocalizedError {
 final class APIService {
     static let shared = APIService()
     var baseURL: URL
+    var userId: String?
+    var boxId: String?
 
-    init(baseURL: URL = URL(string: "https://BrainFood.timrmp.de")!) {
+    init(baseURL: URL = URL(string: "https://brainfood.timrmp.de")!) {
         self.baseURL = baseURL
     }
 
     func fetchCards(dueOnly: Bool) async throws -> [Card] {
         var components = URLComponents(url: baseURL.appendingPathComponent("cards"), resolvingAgainstBaseURL: false)
-        components?.queryItems = dueOnly ? [URLQueryItem(name: "dueOnly", value: "true")] : nil
+        // Match the GPT call shape: always send dueOnly explicitly.
+        components?.queryItems = [URLQueryItem(name: "dueOnly", value: dueOnly ? "true" : "false")]
         guard let url = components?.url else { throw APIError.invalidURL }
-        let (data, _) = try await URLSession.shared.data(from: url)
+        log("GET \(url.absoluteString)")
+        var request = URLRequest(url: url)
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        applyContextHeaders(to: &request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        logResponse(response, data: data)
         let decoded = try JSONDecoder.api.decode([Card].self, from: data)
         return decoded
     }
@@ -93,9 +114,13 @@ final class APIService {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
         req.httpBody = try JSONEncoder().encode(request)
+        applyContextHeaders(to: &req)
+        log("POST \(url.absoluteString) body=\(request)")
         let (data, response) = try await URLSession.shared.data(for: req)
         try validate(response: response, data: data)
+        logResponse(response, data: data)
         return try JSONDecoder.api.decode(Card.self, from: data)
     }
 
@@ -104,11 +129,54 @@ final class APIService {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
         let payload = ["cardId": cardId, "rating": rating.rawValue] as [String : Any]
         req.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        applyContextHeaders(to: &req)
+        log("POST \(url.absoluteString) rating=\(rating.rawValue) cardId=\(cardId)")
         let (data, response) = try await URLSession.shared.data(for: req)
         try validate(response: response, data: data)
+        logResponse(response, data: data)
         return try JSONDecoder.api.decode(Card.self, from: data)
+    }
+
+    func createUser(name: String) async throws -> User {
+        let url = baseURL.appendingPathComponent("users")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["name": name])
+        let (data, response) = try await URLSession.shared.data(for: req)
+        try validate(response: response, data: data)
+        return try JSONDecoder.api.decode(User.self, from: data)
+    }
+
+    func createBox(userId: String, name: String) async throws -> Box {
+        let url = baseURL.appendingPathComponent("users/\(userId)/boxes")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["name": name])
+        let (data, response) = try await URLSession.shared.data(for: req)
+        try validate(response: response, data: data)
+        return try JSONDecoder.api.decode(Box.self, from: data)
+    }
+
+    func listBoxes(userId: String) async throws -> [Box] {
+        let url = baseURL.appendingPathComponent("users/\(userId)/boxes")
+        let (data, response) = try await URLSession.shared.data(from: url)
+        try validate(response: response, data: data)
+        return try JSONDecoder.api.decode([Box].self, from: data)
+    }
+
+    func health() async throws -> String {
+        let url = baseURL.appendingPathComponent("health")
+        log("GET \(url.absoluteString)")
+        var req = URLRequest(url: url)
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await URLSession.shared.data(for: req)
+        logResponse(response, data: data)
+        return String(data: data, encoding: .utf8) ?? "<non-utf8>"
     }
 
     private func validate(response: URLResponse?, data: Data) throws {
@@ -118,6 +186,22 @@ final class APIService {
             let message = serverMessage?["error"] as? String ?? "Status \(http.statusCode)"
             throw APIError.server(message)
         }
+    }
+
+    private func log(_ message: String) {
+        print("APIService :: \(message)")
+    }
+
+    private func logResponse(_ response: URLResponse?, data: Data) {
+        if let http = response as? HTTPURLResponse {
+            let bodyPreview = String(data: data, encoding: .utf8) ?? "<non-utf8>"
+            print("APIService :: response \(http.statusCode) from \(http.url?.absoluteString ?? "") body=\(bodyPreview)")
+        }
+    }
+
+    private func applyContextHeaders(to request: inout URLRequest) {
+        if let userId { request.setValue(userId, forHTTPHeaderField: "x-user-id") }
+        if let boxId { request.setValue(boxId, forHTTPHeaderField: "x-box-id") }
     }
 }
 

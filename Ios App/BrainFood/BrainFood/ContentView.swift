@@ -2,21 +2,78 @@ import SwiftUI
 
 struct ContentView: View {
 	@StateObject private var viewModel = AppViewModel()
+	@State private var showSettings = false
+	@State private var baseURLText = APIService.shared.baseURL.absoluteString
+	@State private var pingResult: String?
+	@State private var isPinging = false
 
 	var body: some View {
-		TabView {
-			ReviewView(viewModel: viewModel)
-				.tabItem {
-					Label("Lernen", systemImage: "checklist")
+		Group {
+			if viewModel.userId == nil || viewModel.boxId == nil {
+				SetupView(viewModel: viewModel) {
+					Task { await viewModel.loadCards() }
 				}
+			} else {
+				TabView {
+					ReviewView(viewModel: viewModel)
+						.tabItem { Label("Lernen", systemImage: "checklist") }
 
-			LibraryView(viewModel: viewModel)
-				.tabItem {
-					Label("Karten", systemImage: "tray.full")
+					LibraryView(viewModel: viewModel)
+						.tabItem { Label("Karten", systemImage: "tray.full") }
 				}
+			}
 		}
 		.task {
-			await viewModel.loadCards()
+			if viewModel.userId != nil && viewModel.boxId != nil {
+				await viewModel.loadCards()
+			}
+		}
+		.toolbar {
+			ToolbarItem(placement: .navigationBarTrailing) {
+				Button { showSettings = true } label: { Image(systemName: "gear") }
+			}
+		}
+		.sheet(isPresented: $showSettings) {
+			NavigationStack {
+				Form {
+					Section(header: Text("API Basis-URL")) {
+						TextField("https://…", text: $baseURLText)
+							.textInputAutocapitalization(.never)
+							.autocorrectionDisabled()
+					}
+					Section(header: Text("Kontext")) {
+						Text("User ID: \(viewModel.userId ?? "–")")
+						Text("Box ID: \(viewModel.boxId ?? "–")")
+					}
+					Section {
+						Button("Übernehmen und Karten neu laden") {
+							if let url = URL(string: baseURLText) {
+								APIService.shared.baseURL = url
+								Task { await viewModel.loadCards() }
+								showSettings = false
+							}
+						}
+						Button {
+							Task { await ping() }
+						} label: {
+							if isPinging { ProgressView() } else { Text("API Healthcheck ausführen") }
+						}
+						if let pingResult {
+							Text(pingResult)
+								.font(.caption)
+								.foregroundColor(.secondary)
+								.textSelection(.enabled)
+						}
+					}
+				}
+				.navigationTitle("Einstellungen")
+				.toolbar {
+					ToolbarItem(placement: .cancellationAction) {
+						Button("Schließen") { showSettings = false }
+					}
+				}
+			}
+			.presentationDetents([.medium, .large])
 		}
 		.alert(isPresented: Binding<Bool>(
 			get: { viewModel.error != nil },
@@ -210,11 +267,11 @@ struct LibraryView: View {
 	@ObservedObject var viewModel: AppViewModel
 	@State private var query = ""
 
-		var body: some View {
-			NavigationStack {
-				List {
-					ForEach(filteredCards, id: \.id) { card in
-						VStack(alignment: .leading, spacing: 6) {
+	var body: some View {
+		NavigationStack {
+			List {
+				ForEach(filteredCards, id: \.id) { card in
+					VStack(alignment: .leading, spacing: 6) {
 						Text(card.front)
 							.font(.headline)
 						Text(card.back)
@@ -291,6 +348,50 @@ struct CreateCardSheet: View {
 					.disabled(front.isEmpty || back.isEmpty)
 				}
 			}
+		}
+	}
+}
+
+struct SetupView: View {
+	@ObservedObject var viewModel: AppViewModel
+	var onDone: () -> Void
+	@State private var name = ""
+	@State private var boxName = ""
+
+	var body: some View {
+		NavigationStack {
+			Form {
+				Section(header: Text("Benutzer")) {
+					if let userId = viewModel.userId {
+						Label("User ID: \(userId)", systemImage: "person.fill.checkmark")
+					} else {
+						TextField("Name", text: $name)
+						Button("Benutzer anlegen") {
+							Task {
+								await viewModel.createUser(name: name)
+								await viewModel.loadBoxes()
+							}
+						}
+						.disabled(name.isEmpty)
+					}
+				}
+				Section(header: Text("Box")) {
+					if let boxId = viewModel.boxId {
+						Label("Aktive Box: \(boxId)", systemImage: "shippingbox.fill")
+					} else {
+						TextField("Box-Name", text: $boxName)
+						Button("Box anlegen") {
+							Task {
+								await viewModel.createBox(name: boxName)
+								await viewModel.loadCards()
+								onDone()
+							}
+						}
+						.disabled(boxName.isEmpty || viewModel.userId == nil)
+					}
+				}
+			}
+			.navigationTitle("Konto einrichten")
 		}
 	}
 }

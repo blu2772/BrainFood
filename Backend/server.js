@@ -21,34 +21,101 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(bodyParser.json());
 
+const requireContext = (req, res, next) => {
+  const userId = req.header('x-user-id') || req.query.userId;
+  const boxId = req.header('x-box-id') || req.query.boxId;
+  req.userId = userId;
+  req.boxId = boxId;
+  next();
+};
+
+const authorizeToken = (req, res, next) => {
+  const bearer = req.header('authorization');
+  const tokenParam = req.query.token;
+  const token = bearer?.replace(/^Bearer\s+/i, '') || tokenParam;
+  if (!token) return next();
+  const found = store.findToken(token);
+  if (!found) return res.status(401).json({ error: 'token_invalid_or_expired' });
+  req.userId = found.userId;
+  req.boxId = found.boxId;
+  next();
+};
+
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, fsrs: defaultConfig, cards: store.read().cards.length });
+  const db = store.read();
+  res.json({
+    ok: true,
+    fsrs: defaultConfig,
+    users: db.users.length,
+    boxes: db.boxes.length,
+    cards: db.cards.length,
+  });
 });
 
-app.get('/cards', (req, res) => {
+app.post('/users', (req, res) => {
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ error: 'name_required' });
+  const user = { id: uuid(), name, createdAt: new Date() };
+  store.appendUser(user);
+  res.status(201).json(user);
+});
+
+app.post('/users/:userId/boxes', (req, res) => {
+  const { userId } = req.params;
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ error: 'name_required' });
+  const box = { id: uuid(), userId, name, createdAt: new Date() };
+  store.appendBox(box);
+  res.status(201).json(box);
+});
+
+app.get('/users/:userId/boxes', (req, res) => {
+  const { userId } = req.params;
+  const db = store.read();
+  res.json(db.boxes.filter((b) => b.userId === userId));
+});
+
+app.post('/tokens', (req, res) => {
+  const { userId, boxId, ttlMinutes = 20 } = req.body;
+  if (!userId || !boxId) return res.status(400).json({ error: 'userId_and_boxId_required' });
+  const token = uuid();
+  const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
+  store.upsertToken({ token, userId, boxId, expiresAt });
+  res.status(201).json({ token, userId, boxId, expiresAt });
+});
+
+app.get('/cards', authorizeToken, requireContext, (req, res) => {
   const { dueOnly } = req.query;
+  const { userId, boxId } = req;
+  if (!userId || !boxId) return res.status(400).json({ error: 'userId_and_boxId_required' });
   const { cards } = store.read();
+  const scoped = cards.filter((c) => c.userId === userId && c.boxId === boxId);
   const now = new Date();
-  const payload =
-    dueOnly === 'true'
-      ? cards.filter((c) => new Date(c.due) <= now)
-      : cards;
+  const payload = dueOnly === 'true' || dueOnly === true
+    ? scoped.filter((c) => new Date(c.due) <= now)
+    : scoped;
   res.json(payload);
 });
 
-app.get('/cards/:id', (req, res) => {
+app.get('/cards/:id', authorizeToken, requireContext, (req, res) => {
+  const { userId, boxId } = req;
   const { cards } = store.read();
-  const card = cards.find((c) => c.id === req.params.id);
+  const card = cards.find((c) => c.id === req.params.id && c.userId === userId && c.boxId === boxId);
   if (!card) return res.status(404).json({ error: 'not_found' });
   res.json(card);
 });
 
-app.post('/cards', (req, res) => {
-  const { front, back, tags = [] } = req.body;
+app.post('/cards', authorizeToken, requireContext, (req, res) => {
+  const { front, back, tags = [], boxId: bodyBox } = req.body;
+  const boxId = bodyBox || req.boxId;
+  const userId = req.userId;
+  if (!userId || !boxId) return res.status(400).json({ error: 'userId_and_boxId_required' });
   if (!front || !back) return res.status(400).json({ error: 'front_and_back_required' });
   const scheduling = createInitialScheduling(new Date());
   const card = {
     id: uuid(),
+    userId,
+    boxId,
     front,
     back,
     tags,
@@ -61,14 +128,19 @@ app.post('/cards', (req, res) => {
   res.status(201).json(card);
 });
 
-app.post('/cards/batch', (req, res) => {
+app.post('/cards/batch', authorizeToken, requireContext, (req, res) => {
   const { cards = [] } = req.body;
+  const userId = req.userId;
+  const boxId = req.boxId;
+  if (!userId || !boxId) return res.status(400).json({ error: 'userId_and_boxId_required' });
   if (!Array.isArray(cards)) return res.status(400).json({ error: 'cards_must_be_array' });
   const now = new Date();
   const created = cards.map((item) => {
     const scheduling = createInitialScheduling(now);
     const card = {
       id: uuid(),
+      userId,
+      boxId,
       front: item.front,
       back: item.back,
       tags: item.tags || [],
@@ -83,31 +155,40 @@ app.post('/cards/batch', (req, res) => {
   res.status(201).json(created);
 });
 
-app.put('/cards/:id', (req, res) => {
+app.put('/cards/:id', authorizeToken, requireContext, (req, res) => {
   const { front, back, tags } = req.body;
-  const updated = store.updateCard(req.params.id, (card) => ({
-    ...card,
-    front: front ?? card.front,
-    back: back ?? card.back,
-    tags: tags ?? card.tags,
-    updatedAt: new Date()
-  }));
-  if (!updated) return res.status(404).json({ error: 'not_found' });
+  const { userId, boxId } = req;
+  const updated = store.updateCard(req.params.id, (card) => {
+    if (card.userId !== userId || card.boxId !== boxId) return card;
+    return {
+      ...card,
+      front: front ?? card.front,
+      back: back ?? card.back,
+      tags: tags ?? card.tags,
+      updatedAt: new Date()
+    };
+  });
+  if (!updated || updated.userId !== userId || updated.boxId !== boxId) return res.status(404).json({ error: 'not_found' });
   res.json(updated);
 });
 
-app.delete('/cards/:id', (req, res) => {
-  const ok = store.deleteCard(req.params.id);
-  if (!ok) return res.status(404).json({ error: 'not_found' });
+app.delete('/cards/:id', authorizeToken, requireContext, (req, res) => {
+  const { userId, boxId } = req;
+  const db = store.read();
+  const card = db.cards.find((c) => c.id === req.params.id && c.userId === userId && c.boxId === boxId);
+  if (!card) return res.status(404).json({ error: 'not_found' });
+  store.deleteCard(req.params.id);
   res.status(204).send();
 });
 
-app.post('/review', (req, res) => {
+app.post('/review', authorizeToken, requireContext, (req, res) => {
   const { cardId, rating } = req.body;
+  const { userId, boxId } = req;
   if (![1, 2, 3, 4].includes(rating)) {
     return res.status(400).json({ error: 'rating_must_be_1_to_4' });
   }
   const updated = store.updateCard(cardId, (card) => {
+    if (card.userId !== userId || card.boxId !== boxId) return card;
     const next = calculateNext(card, rating, new Date());
     return {
       ...card,
@@ -119,11 +200,11 @@ app.post('/review', (req, res) => {
       updatedAt: new Date()
     };
   });
-  if (!updated) return res.status(404).json({ error: 'not_found' });
+  if (!updated || updated.userId !== userId || updated.boxId !== boxId) return res.status(404).json({ error: 'not_found' });
   res.json(updated);
 });
 
-app.post('/import/pdf', upload.single('file'), async (req, res) => {
+app.post('/import/pdf', authorizeToken, requireContext, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'file_required' });
   const { delimiter = '\n' } = req.body;
   const buffer = fs.readFileSync(req.file.path);
@@ -138,6 +219,8 @@ app.post('/import/pdf', upload.single('file'), async (req, res) => {
       const scheduling = createInitialScheduling(now);
       const card = {
         id: uuid(),
+        userId: req.userId,
+        boxId: req.boxId,
         front: line,
         back: '',
         tags: ['pdf-import'],

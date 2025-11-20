@@ -8,7 +8,28 @@ const ensureDb = () => {
     fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
   }
   if (!fs.existsSync(DB_PATH)) {
-    fs.writeFileSync(DB_PATH, JSON.stringify({ cards: [] }, null, 2));
+    fs.writeFileSync(
+      DB_PATH,
+      JSON.stringify({ users: [], boxes: [], cards: [], tokens: [] }, null, 2)
+    );
+  } else {
+    // Migrate legacy structure that only had cards
+    const raw = fs.readFileSync(DB_PATH, 'utf-8');
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed.users) {
+        parsed.users = [];
+        parsed.boxes = [];
+        parsed.tokens = [];
+        fs.writeFileSync(DB_PATH, JSON.stringify(parsed, null, 2));
+      }
+    } catch (err) {
+      // If parse failed, reset to a known-good empty shape
+      fs.writeFileSync(
+        DB_PATH,
+        JSON.stringify({ users: [], boxes: [], cards: [], tokens: [] }, null, 2)
+      );
+    }
   }
 };
 
@@ -48,10 +69,42 @@ const deleteCard = (id) => {
   return true;
 };
 
+const appendUser = (user) => {
+  const db = read();
+  db.users.push(user);
+  write(db);
+  return user;
+};
+
+const appendBox = (box) => {
+  const db = read();
+  db.boxes.push(box);
+  write(db);
+  return box;
+};
+
+const upsertToken = (token) => {
+  const db = read();
+  db.tokens = db.tokens.filter((t) => t.token !== token.token);
+  db.tokens.push(token);
+  write(db);
+  return token;
+};
+
+const findToken = (token) => {
+  const db = read();
+  const now = Date.now();
+  return db.tokens.find((t) => t.token === token && new Date(t.expiresAt).getTime() > now);
+};
+
 module.exports = {
   read,
   write,
   appendCard,
   updateCard,
-  deleteCard
+  deleteCard,
+  appendUser,
+  appendBox,
+  upsertToken,
+  findToken
 };
