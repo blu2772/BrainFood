@@ -1,0 +1,230 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "BrainFood Vocabulary API",
+    "version": "1.0.0",
+    "description": "Endpoints for creating and reviewing vocabulary flashcards using the FSRS scheduling model."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Local development"
+    }
+  ],
+  "paths": {
+    "/cards": {
+      "get": {
+        "summary": "List cards",
+        "parameters": [
+          {
+            "name": "dueOnly",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "If true, only returns cards that are due."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of cards",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Card"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a single card",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCardRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Card created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Card"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cards/batch": {
+      "post": {
+        "summary": "Create multiple cards (for GPT batch generation)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "cards": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/CreateCardRequest"
+                    }
+                  }
+                },
+                "required": ["cards"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created cards",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Card"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/review": {
+      "post": {
+        "summary": "Submit a review result",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "cardId": {
+                    "type": "string"
+                  },
+                  "rating": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 4,
+                    "description": "1=Again, 2=Hard, 3=Good, 4=Easy"
+                  }
+                },
+                "required": ["cardId", "rating"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated card with next due date",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Card"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Card": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "front": {
+            "type": "string"
+          },
+          "back": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "stability": {
+            "type": "number"
+          },
+          "difficulty": {
+            "type": "number"
+          },
+          "due": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastReview": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lapses": {
+            "type": "integer"
+          },
+          "reps": {
+            "type": "integer"
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "rating": {
+                  "type": "integer"
+                },
+                "reviewedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "intervalDays": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "required": ["id", "front", "back", "due", "stability", "difficulty"]
+      },
+      "CreateCardRequest": {
+        "type": "object",
+        "properties": {
+          "front": {
+            "type": "string",
+            "description": "Term or question"
+          },
+          "back": {
+            "type": "string",
+            "description": "Answer or translation"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["front", "back"]
+      }
+    }
+  }
+}
