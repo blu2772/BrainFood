@@ -6,6 +6,17 @@ struct ContentView: View {
 	@State private var baseURLText = APIService.shared.baseURL.absoluteString
 	@State private var pingResult: String?
 	@State private var isPinging = false
+	
+	private func ping() async {
+		isPinging = true
+		defer { isPinging = false }
+		do {
+			let result = try await APIService.shared.health()
+			pingResult = "OK: \(result)"
+		} catch {
+			pingResult = "Fehler: \(error.localizedDescription)"
+		}
+	}
 
 	var body: some View {
 		Group {

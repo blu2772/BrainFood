@@ -261,6 +261,8 @@ struct FSRSCalculator {
 
         return Card(
             id: card.id,
+            userId: card.userId,
+            boxId: card.boxId,
             front: card.front,
             back: card.back,
             tags: card.tags,

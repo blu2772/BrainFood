@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const bcrypt = require('bcryptjs');
 const bodyParser = require('body-parser');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
@@ -52,16 +53,39 @@ app.get('/health', (_req, res) => {
   });
 });
 
-app.post('/users', (req, res) => {
-  const { name } = req.body;
-  if (!name) return res.status(400).json({ error: 'name_required' });
-  const user = { id: uuid(), name, createdAt: new Date() };
+app.post('/auth/register', async (req, res) => {
+  const { name, email, password } = req.body;
+  if (!name || !email || !password) return res.status(400).json({ error: 'name_email_password_required' });
+  const db = store.read();
+  if (db.users.find((u) => u.email === email)) {
+    return res.status(400).json({ error: 'email_exists' });
+  }
+  const passwordHash = await bcrypt.hash(password, 10);
+  const user = { id: uuid(), name, email, passwordHash, createdAt: new Date() };
   store.appendUser(user);
-  res.status(201).json(user);
+  const token = uuid();
+  const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000); // 12h session
+  store.upsertToken({ token, userId: user.id, boxId: null, expiresAt });
+  res.status(201).json({ user: { id: user.id, name: user.name, email: user.email }, token, expiresAt });
 });
 
-app.post('/users/:userId/boxes', (req, res) => {
+app.post('/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'email_and_password_required' });
+  const db = store.read();
+  const user = db.users.find((u) => u.email === email);
+  if (!user) return res.status(401).json({ error: 'invalid_credentials' });
+  const ok = await bcrypt.compare(password, user.passwordHash || '');
+  if (!ok) return res.status(401).json({ error: 'invalid_credentials' });
+  const token = uuid();
+  const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000);
+  store.upsertToken({ token, userId: user.id, boxId: null, expiresAt });
+  res.json({ user: { id: user.id, name: user.name, email: user.email }, token, expiresAt });
+});
+
+app.post('/users/:userId/boxes', authorizeToken, (req, res) => {
   const { userId } = req.params;
+  if (req.userId && req.userId !== userId) return res.status(403).json({ error: 'forbidden' });
   const { name } = req.body;
   if (!name) return res.status(400).json({ error: 'name_required' });
   const box = { id: uuid(), userId, name, createdAt: new Date() };
@@ -69,8 +93,9 @@ app.post('/users/:userId/boxes', (req, res) => {
   res.status(201).json(box);
 });
 
-app.get('/users/:userId/boxes', (req, res) => {
+app.get('/users/:userId/boxes', authorizeToken, (req, res) => {
   const { userId } = req.params;
+  if (req.userId && req.userId !== userId) return res.status(403).json({ error: 'forbidden' });
   const db = store.read();
   res.json(db.boxes.filter((b) => b.userId === userId));
 });
