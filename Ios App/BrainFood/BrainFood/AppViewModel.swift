@@ -1,8 +1,11 @@
 import Foundation
 import SwiftUI
+import Combine
 
 @MainActor
 final class AppViewModel: ObservableObject {
+    // Explicit publisher keeps ObservableObject conformance obvious for the compiler.
+    let objectWillChange = ObservableObjectPublisher()
     @Published var cards: [Card] = []
     @Published var isLoading = false
     @Published var error: String?

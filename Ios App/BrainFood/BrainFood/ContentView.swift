@@ -210,11 +210,11 @@ struct LibraryView: View {
 	@ObservedObject var viewModel: AppViewModel
 	@State private var query = ""
 
-	var body: some View {
-		NavigationStack {
-			List {
-				ForEach(filteredCards) { card in
-					VStack(alignment: .leading, spacing: 6) {
+		var body: some View {
+			NavigationStack {
+				List {
+					ForEach(filteredCards, id: \.id) { card in
+						VStack(alignment: .leading, spacing: 6) {
 						Text(card.front)
 							.font(.headline)
 						Text(card.back)
@@ -222,7 +222,7 @@ struct LibraryView: View {
 						HStack {
 							Label("\(card.reps) Wiederholungen", systemImage: "clock")
 							Spacer()
-							Label(card.due, style: .date)
+							Text(card.due, style: .date)
 						}
 						.font(.caption)
 						.foregroundStyle(.secondary)
