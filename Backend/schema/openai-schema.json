@@ -7,21 +7,18 @@
   },
   "servers": [
     {
-      "url": "https://BrainFood.timrmp.de",
+      "url": "https://brainfood.timrmp.de",
       "description": "Production"
-    },
-    {
-      "url": "http://localhost:3000",
-      "description": "Local development"
     }
   ],
   "paths": {
     "/cards": {
       "get": {
-        "summary": "List cards",
-        "parameters": [
-          {
-            "name": "dueOnly",
+      "summary": "List cards",
+      "operationId": "listCards",
+      "parameters": [
+        {
+          "name": "dueOnly",
             "in": "query",
             "required": false,
             "schema": {
@@ -48,6 +45,7 @@
       },
       "post": {
         "summary": "Create a single card",
+        "operationId": "createCard",
         "requestBody": {
           "content": {
             "application/json": {
@@ -74,6 +72,7 @@
     "/cards/batch": {
       "post": {
         "summary": "Create multiple cards (for GPT batch generation)",
+        "operationId": "batchCreateCards",
         "requestBody": {
           "content": {
             "application/json": {
@@ -112,6 +111,7 @@
     "/review": {
       "post": {
         "summary": "Submit a review result",
+        "operationId": "submitReview",
         "requestBody": {
           "content": {
             "application/json": {
