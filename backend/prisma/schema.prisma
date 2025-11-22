@@ -1,0 +1,78 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  passwordHash String @map("password_hash")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  boxes      Box[]
+  reviewLogs ReviewLog[]
+
+  @@map("users")
+}
+
+model Box {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cards Card[]
+
+  @@map("boxes")
+}
+
+model Card {
+  id          String    @id @default(cuid())
+  boxId       String    @map("box_id")
+  front       String
+  back        String
+  tags        String?   // Comma-separated tags
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // FSRS-5 fields
+  stability   Float     @default(0.4) // Initial stability in days
+  difficulty  Float     @default(0.3) // Difficulty factor (0-1)
+  reps        Int       @default(0) // Number of successful reviews
+  lapses      Int       @default(0) // Number of times rated "again"
+  lastReviewAt DateTime? @map("last_review_at")
+  due         DateTime  @default(now()) // Next review due date
+
+  box        Box         @relation(fields: [boxId], references: [id], onDelete: Cascade)
+  reviewLogs ReviewLog[]
+
+  @@map("cards")
+}
+
+model ReviewLog {
+  id              String   @id @default(cuid())
+  cardId          String   @map("card_id")
+  userId          String   @map("user_id")
+  rating          String   // "again", "hard", "good", "easy"
+  reviewedAt      DateTime @default(now()) @map("reviewed_at")
+  previousStability Float  @map("previous_stability")
+  newStability    Float    @map("new_stability")
+  previousDue     DateTime @map("previous_due")
+  newDue          DateTime @map("new_due")
+  interval        Int?     // Interval in days
+
+  card Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("review_logs")
+}
+
