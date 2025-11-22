@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import { authenticateToken } from "../middleware/auth";
+import { authenticateTokenOrApiKey } from "../middleware/authOptional";
 import { initializeCardState } from "../fsrs/fsrs";
 
 const router = Router();
@@ -10,7 +11,7 @@ const prisma = new PrismaClient();
  * GET /api/boxes/:boxId/cards
  * Liefert alle Karten einer Box
  */
-router.get("/boxes/:boxId/cards", authenticateToken, async (req: Request, res: Response) => {
+router.get("/boxes/:boxId/cards", authenticateTokenOrApiKey, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId;
     const { boxId } = req.params;
@@ -60,7 +61,7 @@ router.get("/boxes/:boxId/cards", authenticateToken, async (req: Request, res: R
  * POST /api/boxes/:boxId/cards
  * Erstellt eine neue Karte
  */
-router.post("/boxes/:boxId/cards", authenticateToken, async (req: Request, res: Response) => {
+router.post("/boxes/:boxId/cards", authenticateTokenOrApiKey, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId;
     const { boxId } = req.params;
@@ -110,7 +111,7 @@ router.post("/boxes/:boxId/cards", authenticateToken, async (req: Request, res: 
  * GET /api/cards/:cardId
  * Liefert Details einer Karte
  */
-router.get("/:cardId", authenticateToken, async (req: Request, res: Response) => {
+router.get("/:cardId", authenticateTokenOrApiKey, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId;
     const { cardId } = req.params;
@@ -139,7 +140,7 @@ router.get("/:cardId", authenticateToken, async (req: Request, res: Response) =>
  * PUT /api/cards/:cardId
  * Aktualisiert eine Karte
  */
-router.put("/:cardId", authenticateToken, async (req: Request, res: Response) => {
+router.put("/:cardId", authenticateTokenOrApiKey, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId;
     const { cardId } = req.params;
@@ -180,7 +181,7 @@ router.put("/:cardId", authenticateToken, async (req: Request, res: Response) =>
  * DELETE /api/cards/:cardId
  * Löscht eine Karte
  */
-router.delete("/:cardId", authenticateToken, async (req: Request, res: Response) => {
+router.delete("/:cardId", authenticateTokenOrApiKey, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId;
     const { cardId } = req.params;

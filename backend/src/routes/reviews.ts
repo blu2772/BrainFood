@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import { authenticateToken } from "../middleware/auth";
+import { authenticateTokenOrApiKey } from "../middleware/authOptional";
 import { scheduleNextReview, isCardDue } from "../fsrs/fsrs";
 
 const router = Router();
@@ -10,7 +11,7 @@ const prisma = new PrismaClient();
  * GET /api/boxes/:boxId/reviews/next
  * Liefert die nächste(n) fällige(n) Karte(n) für Review
  */
-router.get("/boxes/:boxId/reviews/next", authenticateToken, async (req: Request, res: Response) => {
+router.get("/boxes/:boxId/reviews/next", authenticateTokenOrApiKey, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId;
     const { boxId } = req.params;
@@ -54,7 +55,7 @@ router.get("/boxes/:boxId/reviews/next", authenticateToken, async (req: Request,
  * POST /api/cards/:cardId/review
  * Verarbeitet eine Review-Bewertung und aktualisiert den FSRS-State
  */
-router.post("/cards/:cardId/review", authenticateToken, async (req: Request, res: Response) => {
+router.post("/cards/:cardId/review", authenticateTokenOrApiKey, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId;
     const { cardId } = req.params;

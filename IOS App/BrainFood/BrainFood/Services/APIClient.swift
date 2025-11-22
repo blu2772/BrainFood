@@ -293,6 +293,42 @@ class APIClient {
         let response = try await performRequest(request, responseType: StatsResponse.self)
         return response.stats
     }
+    
+    // MARK: - API Key Endpoints
+    
+    func createApiKey() async throws -> ApiKeyResponse {
+        guard let request = createRequest(
+            endpoint: "/api-keys",
+            method: "POST"
+        ) else {
+            throw APIError.invalidRequest
+        }
+        
+        return try await performRequest(request, responseType: ApiKeyResponse.self)
+    }
+    
+    func getApiKeys() async throws -> [ApiKey] {
+        guard let request = createRequest(
+            endpoint: "/api-keys",
+            method: "GET"
+        ) else {
+            throw APIError.invalidRequest
+        }
+        
+        let response = try await performRequest(request, responseType: ApiKeysResponse.self)
+        return response.keys
+    }
+    
+    func deleteApiKey(keyId: String) async throws {
+        guard let request = createRequest(
+            endpoint: "/api-keys/\(keyId)",
+            method: "DELETE"
+        ) else {
+            throw APIError.invalidRequest
+        }
+        
+        _ = try await URLSession.shared.data(for: request)
+    }
 }
 
 // MARK: - Error Types

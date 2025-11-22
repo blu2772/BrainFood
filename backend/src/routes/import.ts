@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import multer from "multer";
 import { PrismaClient } from "@prisma/client";
 import { authenticateToken } from "../middleware/auth";
+import { authenticateTokenOrApiKey } from "../middleware/authOptional";
 import { extractTextFromPDF, chunkText } from "../services/pdfService";
 import { generateCardsFromText } from "../services/openaiService";
 import { initializeCardState } from "../fsrs/fsrs";
@@ -30,7 +31,7 @@ const upload = multer({
  */
 router.post(
   "/pdf",
-  authenticateToken,
+  authenticateTokenOrApiKey,
   upload.single("file"),
   async (req: Request, res: Response) => {
     try {
@@ -125,7 +126,7 @@ router.post(
  * POST /api/import/text
  * Importiert Karten aus rohem Text
  */
-router.post("/text", authenticateToken, async (req: Request, res: Response) => {
+router.post("/text", authenticateTokenOrApiKey, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId;
     const { boxId, text, sourceLanguage, targetLanguage } = req.body;

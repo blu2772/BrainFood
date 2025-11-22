@@ -7,6 +7,7 @@ import cardsRoutes from "./routes/cards";
 import reviewsRoutes from "./routes/reviews";
 import statsRoutes from "./routes/stats";
 import importRoutes from "./routes/import";
+import apiKeysRoutes from "./routes/apiKeys";
 
 // Lade Umgebungsvariablen
 dotenv.config();
@@ -43,6 +44,7 @@ app.get("/health/db", async (req, res) => {
 
 // API Routes
 app.use("/api/auth", authRoutes);
+app.use("/api/api-keys", apiKeysRoutes);
 app.use("/api/boxes", boxesRoutes);
 app.use("/api", cardsRoutes);
 app.use("/api", reviewsRoutes);

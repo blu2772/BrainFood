@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import { authenticateToken } from "../middleware/auth";
+import { authenticateTokenOrApiKey } from "../middleware/authOptional";
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -9,7 +10,7 @@ const prisma = new PrismaClient();
  * GET /api/boxes
  * Liefert alle Boxen des aktuellen Benutzers
  */
-router.get("/", authenticateToken, async (req: Request, res: Response) => {
+router.get("/", authenticateTokenOrApiKey, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId;
 
@@ -34,7 +35,7 @@ router.get("/", authenticateToken, async (req: Request, res: Response) => {
  * POST /api/boxes
  * Erstellt eine neue Box
  */
-router.post("/", authenticateToken, async (req: Request, res: Response) => {
+router.post("/", authenticateTokenOrApiKey, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId;
     const { name } = req.body;
@@ -61,7 +62,7 @@ router.post("/", authenticateToken, async (req: Request, res: Response) => {
  * PUT /api/boxes/:boxId
  * Aktualisiert eine Box (z.B. Name ändern)
  */
-router.put("/:boxId", authenticateToken, async (req: Request, res: Response) => {
+router.put("/:boxId", authenticateTokenOrApiKey, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId;
     const { boxId } = req.params;
@@ -99,7 +100,7 @@ router.put("/:boxId", authenticateToken, async (req: Request, res: Response) => 
  * DELETE /api/boxes/:boxId
  * Löscht eine Box (inkl. aller Karten und ReviewLogs)
  */
-router.delete("/:boxId", authenticateToken, async (req: Request, res: Response) => {
+router.delete("/:boxId", authenticateTokenOrApiKey, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId;
     const { boxId } = req.params;
