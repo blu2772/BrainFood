@@ -8,8 +8,9 @@ info:
     Wiederholungsplanung basierend auf dem FSRS-5 Algorithmus.
     
     **Authentifizierung:**
-    - JWT Token: Erhalten via /auth/login oder /auth/register
-    - API Key: Temporäre Keys (60 Min) erstellt via /api-keys (erfordert JWT)
+    - API Key: Temporäre Keys (60 Min) erstellt in der iOS-App
+    - Der API-Key gewährt Zugriff nur auf die Daten des Users, der den Key erstellt hat
+    - Verwende Format: "Bearer <api-key>" im Authorization-Header
   version: 1.0.0
   contact:
     name: BrainFood API Support
@@ -21,28 +22,20 @@ servers:
     description: Production server
 
 tags:
-  - name: Authentication
-    description: User authentication and API key management
   - name: Boxes
-    description: Box management endpoints
+    description: Box management endpoints - Create, read, update, and delete boxes
   - name: Cards
-    description: Card management endpoints
+    description: Card management endpoints - Create, read, update, and delete flashcards
   - name: Reviews
-    description: Spaced repetition review endpoints
+    description: Spaced repetition review endpoints - Get next due cards and submit reviews
   - name: Import
-    description: Import cards from PDF or text
+    description: Import cards from PDF or text using OpenAI
 
 security:
-  - bearerAuth: []
   - apiKeyAuth: []
 
 components:
   securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-      description: JWT token obtained from /auth/login or /auth/register
     apiKeyAuth:
       type: apiKey
       in: header
@@ -50,22 +43,9 @@ components:
       description: |
         API Key for temporary access (60 minutes). 
         Use format: "Bearer <api-key>" or use X-API-Key header.
-        Create API keys via POST /api/api-keys (requires JWT authentication).
+        The API key is created by the user in the iOS app and grants access only to that user's data.
 
   schemas:
-    User:
-      type: object
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-        email:
-          type: string
-        createdAt:
-          type: string
-          format: date-time
-
     Box:
       type: object
       properties:
@@ -128,44 +108,6 @@ components:
       enum: [again, hard, good, easy]
       description: User rating for card review
 
-    AuthRequest:
-      type: object
-      required:
-        - email
-        - password
-      properties:
-        email:
-          type: string
-          format: email
-        password:
-          type: string
-          minLength: 6
-
-    RegisterRequest:
-      type: object
-      required:
-        - name
-        - email
-        - password
-      properties:
-        name:
-          type: string
-        email:
-          type: string
-          format: email
-        password:
-          type: string
-          minLength: 6
-
-    AuthResponse:
-      type: object
-      properties:
-        user:
-          $ref: '#/components/schemas/User'
-        token:
-          type: string
-          description: JWT access token
-
     CreateBoxRequest:
       type: object
       required:
@@ -215,188 +157,6 @@ components:
           type: string
 
 paths:
-  /auth/register:
-    post:
-      operationId: RegisterUser
-      tags:
-        - Authentication
-      summary: Register a new user
-      description: Creates a new user account and returns a JWT token
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RegisterRequest'
-      responses:
-        '201':
-          description: User created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthResponse'
-        '400':
-          description: Invalid input
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '409':
-          description: Email already registered
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /auth/login:
-    post:
-      operationId: LoginUser
-      tags:
-        - Authentication
-      summary: Login user
-      description: Authenticates a user and returns a JWT token
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AuthRequest'
-      responses:
-        '200':
-          description: Login successful
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthResponse'
-        '401':
-          description: Invalid credentials
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /auth/me:
-    get:
-      operationId: GetCurrentUser
-      tags:
-        - Authentication
-      summary: Get current user
-      description: Returns information about the currently authenticated user
-      responses:
-        '200':
-          description: User information
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  user:
-                    $ref: '#/components/schemas/User'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /api-keys:
-    post:
-      operationId: CreateApiKey
-      tags:
-        - Authentication
-      summary: Create a temporary API key
-      description: |
-        Creates a new temporary API key valid for 60 minutes.
-        The key can be used with Custom GPT to access your boxes and cards.
-        **Important:** The key is only shown once - save it immediately!
-      requestBody:
-        required: false
-      responses:
-        '201':
-          description: API key created successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  key:
-                    type: string
-                    description: The API key (save this - it won't be shown again!)
-                  keyPrefix:
-                    type: string
-                    description: First 12 characters for identification
-                  expiresAt:
-                    type: string
-                    format: date-time
-                    description: Expiration date/time
-                  message:
-                    type: string
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-    get:
-      operationId: ListApiKeys
-      tags:
-        - Authentication
-      summary: List all API keys
-      description: Returns a list of all API keys for the current user (without the key itself)
-      responses:
-        '200':
-          description: List of API keys
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  keys:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        id:
-                          type: string
-                        keyPrefix:
-                          type: string
-                        expiresAt:
-                          type: string
-                          format: date-time
-                        createdAt:
-                          type: string
-                          format: date-time
-                        lastUsedAt:
-                          type: string
-                          format: date-time
-                          nullable: true
-
-    delete:
-      operationId: DeleteApiKey
-      tags:
-        - Authentication
-      summary: Delete an API key
-      description: Deletes a specific API key
-      parameters:
-        - name: keyId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: API key deleted successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-
   /boxes:
     get:
       operationId: GetBoxes

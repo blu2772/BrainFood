@@ -51,7 +51,7 @@ struct BoxSettingsView: View {
 struct ApiKeysView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = ApiKeysViewModel()
-    @State private var showingNewKeyAlert = false
+    @State private var showingNewKeySheet = false
     
     var body: some View {
         NavigationStack {
@@ -113,22 +113,11 @@ struct ApiKeysView: View {
                     }
                 }
             }
-            .alert("Neuer API-Key", isPresented: $viewModel.showingNewKey) {
-                Button("OK") {
-                    viewModel.showingNewKey = false
-                }
-            } message: {
-                if let newKey = viewModel.newKey {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Dein API-Key (60 Minuten gültig):")
-                            .font(.headline)
-                        Text(newKey.key)
-                            .font(.system(.body, design: .monospaced))
-                            .textSelection(.enabled)
-                        Text("⚠️ Wichtig: Speichere diesen Key jetzt! Er wird nicht erneut angezeigt.")
-                            .font(.caption)
-                            .foregroundColor(.orange)
-                    }
+            .sheet(isPresented: $viewModel.showingNewKey) {
+                if let apiKey = viewModel.newKey?.key {
+                    NewApiKeySheet(apiKey: apiKey, onDismiss: {
+                        viewModel.showingNewKey = false
+                    })
                 }
             }
             .task {
@@ -154,6 +143,80 @@ struct ApiKeysView: View {
             return date < Date()
         }
         return false
+    }
+}
+
+struct NewApiKeySheet: View {
+    let apiKey: String
+    let onDismiss: () -> Void
+    @State private var copied = false
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Dein API-Key")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                    
+                    Text("Dieser Key ist 60 Minuten gültig und wird nicht erneut angezeigt. Speichere ihn jetzt!")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    
+                    Text("⚠️ Wichtig: Kopiere diesen Key sofort!")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                        .padding(.top, 4)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("API-Key:")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    TextField("", text: .constant(apiKey))
+                        .font(.system(.body, design: .monospaced))
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                        .textSelection(.enabled)
+                        .disabled(true)
+                }
+                .padding(.horizontal)
+                
+                Button(action: {
+                    UIPasteboard.general.string = apiKey
+                    copied = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                        copied = false
+                    }
+                }) {
+                    HStack {
+                        Image(systemName: copied ? "checkmark.circle.fill" : "doc.on.doc")
+                        Text(copied ? "Kopiert!" : "In Zwischenablage kopieren")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+                }
+                .padding(.horizontal)
+                
+                Spacer()
+            }
+            .navigationTitle("Neuer API-Key")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Fertig") {
+                        onDismiss()
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -329,6 +329,97 @@ class APIClient {
         
         _ = try await URLSession.shared.data(for: request)
     }
+    
+    // MARK: - Import Endpoints
+    
+    func suggestCards(
+        boxId: String,
+        goal: String?,
+        text: String?,
+        pdfData: Data?,
+        sourceLanguage: String = "Deutsch",
+        targetLanguage: String = "Englisch"
+    ) async throws -> [CardSuggestion] {
+        guard let url = URL(string: "\(baseURL)/import/suggest") else {
+            throw APIError.invalidRequest
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        
+        if let token = getAuthToken() {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        
+        // Multipart Form Data
+        let boundary = UUID().uuidString
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        
+        var body = Data()
+        
+        // boxId
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"boxId\"\r\n\r\n".data(using: .utf8)!)
+        body.append(boxId.data(using: .utf8)!)
+        body.append("\r\n".data(using: .utf8)!)
+        
+        // goal (optional)
+        if let goal = goal {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"goal\"\r\n\r\n".data(using: .utf8)!)
+            body.append(goal.data(using: .utf8)!)
+            body.append("\r\n".data(using: .utf8)!)
+        }
+        
+        // text (optional)
+        if let text = text {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"text\"\r\n\r\n".data(using: .utf8)!)
+            body.append(text.data(using: .utf8)!)
+            body.append("\r\n".data(using: .utf8)!)
+        }
+        
+        // PDF file (optional)
+        if let pdfData = pdfData {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"file\"; filename=\"document.pdf\"\r\n".data(using: .utf8)!)
+            body.append("Content-Type: application/pdf\r\n\r\n".data(using: .utf8)!)
+            body.append(pdfData)
+            body.append("\r\n".data(using: .utf8)!)
+        }
+        
+        // Languages
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"sourceLanguage\"\r\n\r\n".data(using: .utf8)!)
+        body.append(sourceLanguage.data(using: .utf8)!)
+        body.append("\r\n".data(using: .utf8)!)
+        
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"targetLanguage\"\r\n\r\n".data(using: .utf8)!)
+        body.append(targetLanguage.data(using: .utf8)!)
+        body.append("\r\n".data(using: .utf8)!)
+        
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+        
+        request.httpBody = body
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            if let errorData = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
+                throw APIError.serverError(errorData.error)
+            }
+            throw APIError.httpError(httpResponse.statusCode)
+        }
+        
+        let decoder = JSONDecoder()
+        let responseData = try decoder.decode(CardSuggestionsResponse.self, from: data)
+        return responseData.cards
+    }
 }
 
 // MARK: - Error Types

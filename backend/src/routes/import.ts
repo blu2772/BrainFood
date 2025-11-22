@@ -163,6 +163,7 @@ router.post("/text", authenticateTokenOrApiKey, async (req: Request, res: Respon
         allCards.push(...cards);
       } catch (error: any) {
         console.error("Error generating cards from chunk:", error);
+        // Weiter mit nächstem Chunk
       }
     }
 
@@ -170,7 +171,7 @@ router.post("/text", authenticateTokenOrApiKey, async (req: Request, res: Respon
       return res.status(400).json({ error: "No cards could be generated from text" });
     }
 
-    // Initialisiere FSRS-State
+    // Initialisiere FSRS-State für alle Karten
     const initialState = initializeCardState();
 
     // Speichere Karten in DB
@@ -202,5 +203,83 @@ router.post("/text", authenticateTokenOrApiKey, async (req: Request, res: Respon
   }
 });
 
-export default router;
+/**
+ * POST /api/import/suggest
+ * Generiert Karten-Vorschläge ohne sie zu speichern (für Preview)
+ */
+router.post("/suggest", authenticateTokenOrApiKey, upload.single("file"), async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    const { boxId, text, goal, sourceLanguage, targetLanguage } = req.body;
 
+    if (!boxId) {
+      return res.status(400).json({ error: "boxId is required" });
+    }
+
+    // Prüfe, ob Box existiert und dem Benutzer gehört
+    const box = await prisma.box.findFirst({
+      where: {
+        id: boxId,
+        userId,
+      },
+    });
+
+    if (!box) {
+      return res.status(404).json({ error: "Box not found" });
+    }
+
+    let contentText = text;
+
+    // Wenn PDF hochgeladen wurde, extrahiere Text
+    if (req.file) {
+      contentText = await extractTextFromPDF(req.file.buffer);
+      if (!contentText || contentText.trim().length === 0) {
+        return res.status(400).json({ error: "Could not extract text from PDF" });
+      }
+    }
+
+    if (!contentText || contentText.trim().length === 0) {
+      return res.status(400).json({ error: "Text content is required" });
+    }
+
+    // Erstelle Prompt mit Ziel
+    const prompt = goal 
+      ? `Ziel: ${goal}\n\nInhalt:\n${contentText}`
+      : contentText;
+
+    // Teile Text in Chunks
+    const chunks = chunkText(prompt, 3000);
+
+    // Generiere Karten aus jedem Chunk
+    const allCards: Array<{ front: string; back: string; tags?: string }> = [];
+
+    for (const chunk of chunks) {
+      try {
+        const cards = await generateCardsFromText(
+          chunk,
+          sourceLanguage || "Deutsch",
+          targetLanguage || "Englisch"
+        );
+        allCards.push(...cards);
+      } catch (error: any) {
+        console.error("Error generating cards from chunk:", error);
+        // Weiter mit nächstem Chunk
+      }
+    }
+
+    if (allCards.length === 0) {
+      return res.status(400).json({ error: "No cards could be generated" });
+    }
+
+    // Gib nur Vorschläge zurück, ohne sie zu speichern
+    res.status(200).json({
+      message: `Generated ${allCards.length} card suggestions`,
+      cards: allCards,
+    });
+  } catch (error: any) {
+    console.error("Card suggestion error:", error);
+    res.status(500).json({ error: `Suggestion failed: ${error.message}` });
+  }
+});
+
+export default router;

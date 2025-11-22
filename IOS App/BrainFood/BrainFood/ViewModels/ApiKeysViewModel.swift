@@ -17,6 +17,11 @@ class ApiKeysViewModel: ObservableObject {
     @Published var newKey: ApiKeyResponse?
     @Published var showingNewKey = false
     
+    // Computed property für den Key-String
+    var newKeyString: String {
+        newKey?.key ?? ""
+    }
+    
     private let apiClient = APIClient.shared
     
     func loadKeys() async {

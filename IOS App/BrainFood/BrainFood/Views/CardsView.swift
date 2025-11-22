@@ -11,6 +11,7 @@ struct CardsView: View {
     let boxId: String
     @StateObject private var viewModel: CardsViewModel
     @State private var showingAddCard = false
+    @State private var showingAICreation = false
     @State private var selectedCard: Card?
     
     init(boxId: String) {
@@ -62,15 +63,31 @@ struct CardsView: View {
             .navigationTitle("Karten")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        showingAddCard = true
-                    }) {
+                    Menu {
+                        Button(action: {
+                            showingAddCard = true
+                        }) {
+                            Label("Manuell erstellen", systemImage: "pencil")
+                        }
+                        
+                        Button(action: {
+                            showingAICreation = true
+                        }) {
+                            Label("Mit KI erstellen", systemImage: "sparkles")
+                        }
+                    } label: {
                         Image(systemName: "plus")
                     }
                 }
             }
             .sheet(isPresented: $showingAddCard) {
                 AddCardView(viewModel: viewModel)
+            }
+            .sheet(isPresented: $showingAICreation) {
+                AICardCreationView(
+                    viewModel: AICardsViewModel(boxId: boxId),
+                    cardsViewModel: viewModel
+                )
             }
             .sheet(item: $selectedCard) { card in
                 EditCardView(viewModel: viewModel, card: card)
