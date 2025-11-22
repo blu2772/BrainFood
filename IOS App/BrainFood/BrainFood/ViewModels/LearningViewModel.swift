@@ -40,14 +40,14 @@ class LearningViewModel: ObservableObject {
         
         // Wenn Queue leer, neue Karten laden
         if reviewQueue.isEmpty {
-            do {
+        do {
                 reviewQueue = try await apiClient.getNextReviews(boxId: boxId, limit: 10)
             } catch let error as APIError {
                 errorMessage = error.errorDescription
                 currentCard = nil
                 isLoading = false
                 return
-            } catch {
+        } catch {
                 errorMessage = "Fehler beim Laden der Karten"
                 currentCard = nil
                 isLoading = false
