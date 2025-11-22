@@ -13,6 +13,8 @@ const prisma = new PrismaClient();
  */
 router.post("/register", async (req: Request, res: Response) => {
   try {
+    console.log("Registration attempt:", { email: req.body.email, name: req.body.name });
+    
     const { name, email, password } = req.body;
 
     if (!name || !email || !password) {
@@ -23,6 +25,7 @@ router.post("/register", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Password must be at least 6 characters" });
     }
 
+    console.log("Checking if user exists...");
     // Prüfe, ob E-Mail bereits existiert
     const existingUser = await prisma.user.findUnique({
       where: { email },
@@ -32,9 +35,11 @@ router.post("/register", async (req: Request, res: Response) => {
       return res.status(409).json({ error: "Email already registered" });
     }
 
+    console.log("Hashing password...");
     // Passwort hashen
     const passwordHash = await hashPassword(password);
 
+    console.log("Creating user...");
     // Benutzer erstellen
     const user = await prisma.user.create({
       data: {
@@ -50,19 +55,30 @@ router.post("/register", async (req: Request, res: Response) => {
       },
     });
 
+    console.log("User created, generating token...");
     // JWT-Token generieren
     const token = generateToken({
       userId: user.id,
       email: user.email,
     });
 
+    console.log("Registration successful");
     res.status(201).json({
       user,
       token,
     });
   } catch (error: any) {
     console.error("Registration error:", error);
-    res.status(500).json({ error: "Internal server error" });
+    console.error("Error name:", error.name);
+    console.error("Error message:", error.message);
+    console.error("Error code:", error.code);
+    console.error("Error stack:", error.stack);
+    
+    res.status(500).json({ 
+      error: "Internal server error",
+      message: process.env.NODE_ENV === "development" ? error.message : undefined,
+      details: process.env.NODE_ENV === "development" ? error.stack : undefined
+    });
   }
 });
 

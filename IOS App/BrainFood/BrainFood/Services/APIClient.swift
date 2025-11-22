@@ -11,7 +11,7 @@ class APIClient {
     static let shared = APIClient()
     
     // TODO: Anpassen an deine Backend-URL
-    private let baseURL = "http://localhost:3000/api"
+    private let baseURL = "https://brainfood.timrmp.de/api"
     
     private init() {}
     

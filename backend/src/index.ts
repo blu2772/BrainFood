@@ -24,6 +24,23 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
+// Database Health Check
+app.get("/health/db", async (req, res) => {
+  try {
+    const { PrismaClient } = await import("@prisma/client");
+    const prisma = new PrismaClient();
+    await prisma.$connect();
+    await prisma.$disconnect();
+    res.json({ status: "ok", database: "connected" });
+  } catch (error: any) {
+    res.status(500).json({ 
+      status: "error", 
+      database: "disconnected",
+      error: error.message 
+    });
+  }
+});
+
 // API Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/boxes", boxesRoutes);
