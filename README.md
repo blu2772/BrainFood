@@ -1,110 +1,112 @@
-# BrainFood - Vokabel-Lern-App mit FSRS-5
+# BrainFood - Vokabel-App mit FSRS-5
 
-BrainFood ist eine moderne iOS-Vokabel-App, die den **FSRS-5 Algorithmus** (Free Spaced Repetition Scheduler v5) zur intelligenten Lernplanung nutzt. Die App ermöglicht effizientes Lernen von Vokabeln über Boxen und Karteikarten, unterstützt PDF-Import mit OpenAI-gestützter Kartenerstellung und bietet ein vollständiges Backend mit REST-API.
+BrainFood ist eine moderne iOS-Vokabel-App, die den **FSRS-5 Algorithmus** für intelligente Wiederholungsplanung nutzt. Die App ermöglicht effizientes Lernen von Vokabeln über Boxen und Karteikarten, unterstützt PDF-Import mit OpenAI-gestützter Kartenerstellung und bietet eine vollständige Backend-API.
 
-## 🎯 Features
+## 📚 Projektübersicht
 
-- **FSRS-5 Algorithmus**: Intelligente Wiederholungsplanung für optimale Lernzeiten
-- **Box-System**: Organisiere deine Vokabeln in verschiedenen Boxen
-- **Karteikarten**: Erstelle und verwalte Vokabelkarten mit Front/Back und Tags
-- **Lern-Interface**: Intuitives Review-System mit Bewertungen (Again/Hard/Good/Easy)
-- **PDF-Import**: Automatische Kartenerstellung aus PDF-Dateien mit OpenAI
-- **Text-Import**: Generiere Karten aus beliebigem Text
-- **Statistiken**: Übersicht über Lernfortschritt und fällige Karten
-- **Offline-Fähigkeit**: Lokales Caching für Offline-Nutzung
-- **REST-API**: Vollständige Backend-API für alle Funktionen
-- **OpenAPI-Schema**: Kompatibel mit OpenAI Custom GPT Actions
+### Was ist BrainFood?
 
-## 📁 Projektstruktur
+BrainFood ist eine Karteikarten-App für iOS, die:
+- **FSRS-5 Spaced Repetition** zur optimalen Lernplanung nutzt
+- Vokabeln in **Boxen** organisiert
+- **PDF-Import** mit automatischer Kartenerstellung via OpenAI unterstützt
+- Eine **REST-API** für Backend-Server bietet
+- **OpenAPI-Schema** für Custom GPT Integration bereitstellt
+
+### Was ist FSRS-5?
+
+**FSRS-5** (Free Spaced Repetition Scheduler) ist ein fortschrittlicher Algorithmus zur Planung von Wiederholungen basierend auf der Vergessenskurve. Im Gegensatz zu einfachen Algorithmen wie SM-2 berücksichtigt FSRS-5:
+
+- **Stabilität** des Gedächtnisses (wie lange eine Information im Gedächtnis bleibt)
+- **Schwierigkeit** der Karte (wie schwer es ist, sich an die Information zu erinnern)
+- **Optimale Intervalle** für Wiederholungen, um eine Erinnerungswahrscheinlichkeit von ~90% zu erreichen
+
+Der Algorithmus passt sich dynamisch an dein Lernverhalten an und optimiert die Wiederholungsintervalle für maximale Effizienz.
+
+## 🏗️ Projektstruktur
 
 ```
 BrainFood/
 ├── backend/              # Node.js/TypeScript Backend-Server
 │   ├── src/
-│   │   ├── fsrs/        # FSRS-5 Algorithmus-Implementierung
-│   │   ├── routes/      # Express-Routen (Auth, Boxes, Cards, Reviews, etc.)
-│   │   ├── services/    # OpenAI-Service, PDF-Service
-│   │   ├── middleware/  # JWT-Authentifizierung
-│   │   └── utils/       # Hilfsfunktionen
-│   ├── prisma/          # Datenbank-Schema und Migrationen
-│   ├── openapi.yaml     # OpenAPI-Spezifikation für Custom GPT
-│   └── package.json
+│   │   ├── fsrs/         # FSRS-5 Algorithmus Implementation
+│   │   ├── routes/       # REST-API Endpunkte
+│   │   ├── services/     # OpenAI, PDF-Services
+│   │   ├── middleware/   # Auth-Middleware
+│   │   └── utils/        # JWT, Password-Hashing
+│   ├── prisma/           # Datenbank-Schema
+│   └── openapi.yaml      # OpenAPI-Spezifikation
 │
-└── IOS App/             # iOS-App (Swift/SwiftUI)
+└── ios-app/              # iOS-App (SwiftUI)
     └── BrainFood/
-        └── BrainFood/
-            ├── Models/      # Datenmodelle (User, Box, Card, etc.)
-            ├── Services/     # API-Client, Keychain-Service
-            ├── ViewModels/   # MVVM ViewModels
-            ├── Views/        # SwiftUI Views
-            └── BrainFoodApp.swift  # App Entry Point
+        ├── Models/       # Datenmodelle
+        ├── Services/     # API-Client, Keychain
+        ├── ViewModels/   # MVVM ViewModels
+        └── Views/        # SwiftUI Views
 ```
 
-## 🚀 Installation & Setup
+## 🚀 Setup & Installation
 
 ### Voraussetzungen
 
-**Backend:**
-- Node.js 18+ und npm
-- PostgreSQL 12+ (oder SQLite für lokale Entwicklung)
-- OpenAI API-Key (für PDF/Text-Import)
+#### Backend
+- **Node.js** 18+ und npm
+- **PostgreSQL** 14+ (für Produktion) oder SQLite (für lokale Entwicklung)
+- **OpenAI API Key** (für PDF-Import)
 
-**iOS-App:**
-- Xcode 15+
-- iOS 17+ SDK
-- macOS (für Entwicklung)
+#### iOS-App
+- **Xcode** 15+ mit iOS 17 SDK
+- **macOS** für Entwicklung
 
 ---
 
-## 🔧 Backend Setup
+## 📦 Backend Setup
 
-### 1. Repository klonen und Backend-Verzeichnis öffnen
+### 1. Abhängigkeiten installieren
 
 ```bash
 cd backend
-```
-
-### 2. Dependencies installieren
-
-```bash
 npm install
 ```
 
-### 3. Umgebungsvariablen konfigurieren
+### 2. Umgebungsvariablen konfigurieren
 
-Erstelle eine `.env`-Datei im `backend/`-Verzeichnis:
+Erstelle eine `.env` Datei im `backend/` Verzeichnis:
 
 ```env
 # Datenbank
 DATABASE_URL="postgresql://user:password@localhost:5432/brainfood?schema=public"
 
 # JWT
-JWT_SECRET="dein-super-geheimer-jwt-schlüssel-ändere-dies-in-produktion"
+JWT_SECRET="your-super-secret-jwt-key-change-this-in-production"
 JWT_EXPIRES_IN="12h"
 
 # OpenAI
-OPENAI_API_KEY="sk-dein-openai-api-key-hier"
+OPENAI_API_KEY="your-openai-api-key-here"
 
 # Server
 PORT=3000
 NODE_ENV=development
 ```
 
-**Hinweis:** Für lokale Entwicklung mit SQLite kannst du `DATABASE_URL="file:./dev.db"` verwenden (dann in `prisma/schema.prisma` `provider = "sqlite"` setzen).
+**Wichtig:** 
+- Ersetze `DATABASE_URL` mit deinen PostgreSQL-Credentials
+- Generiere einen sicheren `JWT_SECRET` (z.B. mit `openssl rand -base64 32`)
+- Füge deinen OpenAI API Key hinzu
 
-### 4. Datenbank-Migrationen ausführen
+### 3. Datenbank-Migrationen ausführen
 
 ```bash
 # Prisma Client generieren
 npm run generate
 
-# Migrationen erstellen und anwenden
+# Datenbank-Migrationen ausführen
 npm run migrate
 ```
 
-### 5. Server starten
+### 4. Server starten
 
-**Entwicklung (mit Hot-Reload):**
+**Entwicklung:**
 ```bash
 npm run dev
 ```
@@ -115,15 +117,53 @@ npm run build
 npm run start
 ```
 
-Der Server läuft dann auf `http://localhost:3000` (oder dem in `.env` konfigurierten PORT).
+Der Server läuft dann auf `http://localhost:3000` (oder dem in `PORT` definierten Port).
 
-### 6. API testen
+### 5. Deployment auf Ubuntu/Plesk
 
-Die API ist unter `http://localhost:3000/api` erreichbar. Ein Health-Check-Endpoint:
+#### Voraussetzungen auf dem Server:
+- Node.js 18+ installiert
+- PostgreSQL-Datenbank erstellt
+- Plesk mit Node.js-Support
 
-```bash
-curl http://localhost:3000/health
-```
+#### Schritte:
+
+1. **Projekt auf Server hochladen** (z.B. via Git, FTP, oder Plesk File Manager)
+
+2. **Node.js-Version in Plesk konfigurieren:**
+   - In Plesk: Domain → Node.js
+   - Node.js-Version auswählen (18+)
+   - Document Root auf `/backend` setzen
+   - Application Startup File: `dist/index.js`
+
+3. **Umgebungsvariablen in Plesk setzen:**
+   - In Plesk: Domain → Node.js → Environment Variables
+   - Alle Variablen aus `.env` hinzufügen:
+     - `DATABASE_URL`
+     - `JWT_SECRET`
+     - `OPENAI_API_KEY`
+     - `PORT` (optional, Standard: 3000)
+     - `NODE_ENV=production`
+
+4. **Dependencies installieren:**
+   ```bash
+   cd backend
+   npm install --production
+   ```
+
+5. **Datenbank-Migrationen:**
+   ```bash
+   npm run generate
+   npm run migrate:deploy
+   ```
+
+6. **App starten:**
+   - In Plesk: Node.js → "Enable Node.js" aktivieren
+   - Oder manuell: `npm run start`
+
+7. **Reverse Proxy konfigurieren** (optional, für HTTPS):
+   - In Plesk: Domain → Apache & nginx Settings
+   - Reverse Proxy zu `http://localhost:3000` einrichten
 
 ---
 
@@ -131,240 +171,174 @@ curl http://localhost:3000/health
 
 ### 1. Xcode-Projekt öffnen
 
-Öffne `IOS App/BrainFood/BrainFood.xcodeproj` in Xcode.
+```bash
+cd "IOS App/BrainFood"
+open BrainFood.xcodeproj
+```
 
 ### 2. Backend-URL konfigurieren
 
-Öffne `IOS App/BrainFood/BrainFood/Services/APIClient.swift` und passe die `baseURL` an:
+Öffne `ios-app/BrainFood/Services/APIClient.swift` und passe die `baseURL` an:
 
 ```swift
-private let baseURL: String = "http://localhost:3000/api"  // Lokal
-// oder für Produktion:
-// private let baseURL: String = "https://deine-domain.com/api"
+private let baseURL = "http://localhost:3000/api"  // Lokal
+// oder
+private let baseURL = "https://your-domain.com/api"  // Produktion
 ```
-
-**Wichtig für iOS-Simulator:** `localhost` funktioniert. Für physische Geräte musst du die IP-Adresse deines Computers verwenden (z.B. `http://192.168.1.100:3000/api`).
 
 ### 3. App bauen und ausführen
 
-- Wähle ein iOS-Simulator oder physisches Gerät
-- Drücke `Cmd+R` zum Builden und Ausführen
+- Wähle ein iOS-Simulator oder Gerät in Xcode
+- Drücke `Cmd + R` zum Builden und Ausführen
+
+**Hinweis:** Für Tests auf einem physischen Gerät muss das Backend über das lokale Netzwerk erreichbar sein (z.B. `http://192.168.1.100:3000/api`).
 
 ---
 
-## 🔐 Authentifizierung
-
-Die API nutzt **JWT (JSON Web Token)** für die Authentifizierung. Nach erfolgreichem Login/Registrierung erhältst du ein Token, das in allen nachfolgenden Requests im `Authorization`-Header mitgesendet werden muss:
-
-```
-Authorization: Bearer <token>
-```
-
-Die Token-Gültigkeit beträgt standardmäßig **12 Stunden** (konfigurierbar über `JWT_EXPIRES_IN`).
-
----
-
-## 📚 API-Endpunkte
+## 🔑 API-Endpunkte
 
 ### Authentifizierung
 
 - `POST /api/auth/register` - Neuen Benutzer registrieren
-- `POST /api/auth/login` - Einloggen
+- `POST /api/auth/login` - Benutzer anmelden
 - `GET /api/auth/me` - Aktuellen Benutzer abrufen
-- `POST /api/auth/logout` - Ausloggen (client-seitig)
+- `POST /api/auth/logout` - Abmelden
 
 ### Boxen
 
-- `GET /api/boxes` - Alle Boxen des Benutzers
+- `GET /api/boxes` - Alle Boxen abrufen
 - `POST /api/boxes` - Neue Box erstellen
 - `PUT /api/boxes/:boxId` - Box aktualisieren
 - `DELETE /api/boxes/:boxId` - Box löschen
 
 ### Karten
 
-- `GET /api/boxes/:boxId/cards` - Alle Karten einer Box (optional: `?search=...&sort=due`)
+- `GET /api/boxes/:boxId/cards` - Alle Karten einer Box abrufen
 - `POST /api/boxes/:boxId/cards` - Neue Karte erstellen
-- `GET /api/cards/:cardId` - Einzelne Karte abrufen
+- `GET /api/cards/:cardId` - Karten-Details abrufen
 - `PUT /api/cards/:cardId` - Karte aktualisieren
 - `DELETE /api/cards/:cardId` - Karte löschen
 
 ### Wiederholungen (Reviews)
 
-- `GET /api/boxes/:boxId/reviews/next` - Nächste fällige Karte(n) abrufen (`?limit=1`)
-- `POST /api/cards/:cardId/review` - Review-Bewertung abgeben (`rating: "again" | "hard" | "good" | "easy"`)
+- `GET /api/boxes/:boxId/reviews/next` - Nächste fällige Karte(n) abrufen
+- `POST /api/cards/:cardId/review` - Review-Bewertung abgeben (again/hard/good/easy)
 
 ### Statistiken
 
-- `GET /api/boxes/:boxId/stats` - Statistiken einer Box (fällige Karten, nächste Fälligkeit, etc.)
+- `GET /api/boxes/:boxId/stats` - Statistiken für eine Box abrufen
 
 ### Import
 
-- `POST /api/import/pdf` - PDF hochladen und Karten generieren (multipart/form-data)
-- `POST /api/import/text` - Text verarbeiten und Karten generieren
+- `POST /api/import/pdf` - Karten aus PDF importieren (multipart/form-data)
+- `POST /api/import/text` - Karten aus Text importieren
+
+**Detaillierte API-Dokumentation:** Siehe `backend/openapi.yaml`
 
 ---
 
 ## 🤖 OpenAI & PDF-Import
 
-### Konfiguration
+### OpenAI API Key konfigurieren
 
-Setze die `OPENAI_API_KEY` in der `.env`-Datei des Backends.
+1. Erstelle einen OpenAI API Key auf [platform.openai.com](https://platform.openai.com)
+2. Füge den Key in die `.env` Datei ein:
+   ```env
+   OPENAI_API_KEY="sk-..."
+   ```
 
-### PDF-Import verwenden
+### PDF-Import testen
 
 **Mit cURL:**
 ```bash
 curl -X POST http://localhost:3000/api/import/pdf \
-  -H "Authorization: Bearer <token>" \
-  -F "file=@document.pdf" \
-  -F "boxId=<box-id>" \
-  -F "sourceLanguage=German" \
-  -F "targetLanguage=English" \
-  -F "maxCards=20"
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -F "file=@/path/to/document.pdf" \
+  -F "boxId=YOUR_BOX_ID" \
+  -F "sourceLanguage=Deutsch" \
+  -F "targetLanguage=Englisch"
 ```
 
 **Mit Postman:**
-1. POST-Request an `/api/import/pdf`
-2. Body-Type: `form-data`
-3. Key `file`: Type `File`, wähle PDF
-4. Key `boxId`: Text, Box-ID eingeben
-5. Optional: `sourceLanguage`, `targetLanguage`, `maxCards`
+1. POST Request an `/api/import/pdf`
+2. Header: `Authorization: Bearer YOUR_TOKEN`
+3. Body: `form-data`
+   - `file`: PDF-Datei auswählen
+   - `boxId`: Box-ID eingeben
+   - `sourceLanguage`: (optional) z.B. "Deutsch"
+   - `targetLanguage`: (optional) z.B. "Englisch"
 
-### Text-Import verwenden
+### Wie funktioniert der Import?
 
-```bash
-curl -X POST http://localhost:3000/api/import/text \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "text": "Dein Text hier...",
-    "boxId": "<box-id>",
-    "sourceLanguage": "German",
-    "targetLanguage": "English",
-    "maxCards": 20
-  }'
-```
-
-Die OpenAI-Integration nutzt GPT-4, um aus Text/Vokabeln automatisch Karteikarten zu generieren. Die generierten Karten werden mit initialem FSRS-5-Status in der Datenbank gespeichert.
+1. **PDF wird hochgeladen** → Text wird extrahiert
+2. **Text wird in Chunks aufgeteilt** (max. 3000 Zeichen pro Chunk)
+3. **OpenAI generiert Karteikarten** aus jedem Chunk
+4. **Karten werden in der Datenbank gespeichert** mit initialem FSRS-5 State
 
 ---
 
-## 🔌 OpenAPI / Custom GPT Integration
+## 🧠 OpenAPI / Custom GPT Integration
 
-Die vollständige OpenAPI-Spezifikation befindet sich in `backend/openapi.yaml`.
+### OpenAPI-Schema
 
-### In OpenAI Custom GPT einbinden
+Das vollständige OpenAPI-Schema befindet sich in `backend/openapi.yaml`.
 
-1. Öffne [OpenAI Custom GPT](https://chat.openai.com/gpts)
-2. Erstelle einen neuen GPT oder bearbeite einen bestehenden
-3. Gehe zu **Actions** → **Create new action**
-4. Lade die `openapi.yaml` hoch oder füge die URL zur OpenAPI-Spezifikation ein
-5. Konfiguriere die Authentifizierung:
-   - Type: `HTTP Bearer`
-   - Token: `<dein-jwt-token>` (oder lass den Nutzer sich anmelden)
-6. Speichere und teste
+### Custom GPT einrichten
 
-Das Custom GPT kann nun:
-- Boxen auflisten und erstellen
-- Karten erstellen
-- Karten aus PDFs/Text importieren
-- Reviews auslösen
+1. **OpenAI Custom GPT erstellen:**
+   - Gehe zu [chat.openai.com/gpts](https://chat.openai.com/gpts)
+   - Erstelle ein neues Custom GPT
 
-**Hinweis:** Für Produktion solltest du eine öffentlich erreichbare URL bereitstellen und ggf. API-Keys für das Custom GPT implementieren.
+2. **Action hinzufügen:**
+   - In den GPT-Einstellungen: "Actions" → "Create new action"
+   - Import: Lade `backend/openapi.yaml` hoch
+   - Oder kopiere den Inhalt der YAML-Datei
+
+3. **Authentifizierung konfigurieren:**
+   - Type: "HTTP Bearer"
+   - Token: Dein JWT-Token (kann auch dynamisch über Login-Endpoint geholt werden)
+
+4. **Verwendung:**
+   - Das Custom GPT kann nun:
+     - Boxen auflisten und erstellen
+     - Karten erstellen
+     - Karten aus PDFs importieren
+     - Reviews auslösen
+
+**Beispiel-Prompts für Custom GPT:**
+- "Erstelle eine neue Box namens 'Spanisch Vokabeln'"
+- "Importiere Karten aus diesem PDF: [PDF hochladen]"
+- "Zeige mir alle Boxen"
+- "Erstelle eine Karte mit Front 'Hola' und Back 'Hallo'"
 
 ---
 
-## 🧠 FSRS-5 Algorithmus
+## 📊 FSRS-5 Algorithmus
 
-### Was ist FSRS-5?
+### Wie funktioniert FSRS-5 in BrainFood?
 
-**FSRS-5** (Free Spaced Repetition Scheduler v5) ist ein moderner Algorithmus zur optimalen Planung von Wiederholungen beim Lernen. Im Gegensatz zu einfachen Algorithmen wie SM-2 berücksichtigt FSRS-5:
+Der FSRS-5 Algorithmus wird im Backend implementiert (`backend/src/fsrs/`) und berechnet für jede Karte:
 
-- **Stability**: Wie stabil ist die Erinnerung? (in Tagen)
-- **Difficulty**: Wie schwierig ist die Karte? (0-1)
-- **Requested Retention**: Ziel-Erinnerungswahrscheinlichkeit (Standard: 90%)
+1. **Stabilität (Stability):** Wie lange die Information im Gedächtnis bleibt
+2. **Schwierigkeit (Difficulty):** Wie schwer es ist, sich an die Information zu erinnern (0-1)
+3. **Nächstes Fälligkeitsdatum (Due):** Wann die Karte wiederholt werden sollte
 
-### Wie funktioniert es in BrainFood?
+### Bewertungen
 
-1. **Neue Karte**: Erhält initiale Werte (Stability: 0.4 Tage, Difficulty: 0.3)
-2. **Review-Bewertung**:
-   - **Again**: Karte wurde vergessen → Stability sinkt stark, Lapse-Zähler erhöht
-   - **Hard**: Schwierig erinnert → Stability wächst wenig
-   - **Good**: Normal erinnert → Standardwachstum
-   - **Easy**: Sehr einfach → Stability steigt stärker, längeres Intervall
-3. **Nächstes Fälligkeitsdatum**: Wird basierend auf neuer Stability und Retention-Ziel berechnet
+- **Again (Rot):** Karte nicht gewusst → Stabilität stark reduziert, sehr kurzes Intervall (1 Tag)
+- **Hard (Orange):** Schwierig gewusst → Stabilität wächst wenig, kürzeres Intervall
+- **Good (Grün):** Normal gewusst → Standard-Wachstum, normales Intervall
+- **Easy (Blau):** Leicht gewusst → Größeres Intervall, stärkeres Wachstum
+
+### Ziel
+
+Das Ziel ist eine **Erinnerungswahrscheinlichkeit von ~90%** bei jeder Wiederholung, um optimales Lernen zu gewährleisten.
 
 ### Implementierung
 
-Die FSRS-5-Logik befindet sich in:
-- Backend: `backend/src/fsrs/fsrs.ts`
-- Die Berechnungen werden serverseitig durchgeführt, um Konsistenz zu gewährleisten
-
----
-
-## 🗄️ Datenbank-Schema
-
-### User
-- `id`, `name`, `email`, `passwordHash`, `createdAt`
-
-### Box
-- `id`, `userId`, `name`, `createdAt`
-
-### Card
-- `id`, `boxId`, `front`, `back`, `tags`
-- FSRS-5: `stability`, `difficulty`, `reps`, `lapses`, `lastReviewAt`, `due`
-
-### ReviewLog
-- `id`, `cardId`, `userId`, `rating`, `reviewedAt`
-- `previousStability`, `newStability`, `previousDue`, `newDue`, `interval`
-
----
-
-## 🚢 Deployment (Ubuntu/Plesk)
-
-### Backend auf Ubuntu-Server deployen
-
-1. **Node.js installieren:**
-   ```bash
-   curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-   sudo apt-get install -y nodejs
-   ```
-
-2. **Projekt auf Server kopieren:**
-   ```bash
-   git clone <repository>
-   cd BrainFood/backend
-   npm install
-   ```
-
-3. **Umgebungsvariablen in Plesk setzen:**
-   - Plesk → Domains → deine-domain.com → PHP Settings
-   - Oder: Erstelle `.env`-Datei manuell
-
-4. **Datenbank-Migrationen:**
-   ```bash
-   npm run migrate:deploy
-   ```
-
-5. **Server starten:**
-   - Mit PM2 (empfohlen):
-     ```bash
-     npm install -g pm2
-     pm2 start dist/index.js --name brainfood
-     pm2 save
-     ```
-   - Oder als Systemd-Service
-   - Oder über Plesk Node.js-App
-
-6. **Reverse Proxy (Nginx/Apache):**
-   - Konfiguriere Proxy-Pass auf `http://localhost:3000`
-   - SSL-Zertifikat einrichten
-
-### iOS-App für Produktion
-
-1. Backend-URL in `APIClient.swift` auf Produktions-URL ändern
-2. In Xcode: Product → Archive
-3. App Store Connect hochladen oder Ad-Hoc-Distribution
+Die FSRS-5 Logik befindet sich in:
+- `backend/src/fsrs/types.ts` - Typen und Parameter
+- `backend/src/fsrs/fsrs.ts` - Algorithmus-Implementation
 
 ---
 
@@ -373,18 +347,18 @@ Die FSRS-5-Logik befindet sich in:
 ### Backend-Tests
 
 ```bash
-npm test
+cd backend
+npm test  # (wenn Tests implementiert sind)
 ```
 
-### API manuell testen
+### API testen
 
-Nutze Tools wie:
-- **Postman**
-- **cURL**
-- **httpie**
-- **Insomnia**
+**Health Check:**
+```bash
+curl http://localhost:3000/health
+```
 
-Beispiel-Login:
+**Login:**
 ```bash
 curl -X POST http://localhost:3000/api/auth/login \
   -H "Content-Type: application/json" \
@@ -393,49 +367,29 @@ curl -X POST http://localhost:3000/api/auth/login \
 
 ---
 
-## 📝 Entwicklung
-
-### Backend
-
-- **TypeScript** mit strikter Typisierung
-- **Express** für HTTP-Server
-- **Prisma** für Datenbankzugriff
-- **JWT** für Authentifizierung
-
-### iOS-App
-
-- **SwiftUI** für UI
-- **MVVM**-Architektur
-- **URLSession** für Networking
-- **Keychain** für sichere Token-Speicherung
-
----
-
 ## 🐛 Fehlerbehebung
 
 ### Backend startet nicht
 
-- Prüfe, ob PostgreSQL läuft: `sudo systemctl status postgresql`
-- Prüfe `.env`-Datei und `DATABASE_URL`
-- Prüfe Port-Konflikte: `lsof -i :3000`
+- Prüfe, ob PostgreSQL läuft und die `DATABASE_URL` korrekt ist
+- Führe `npm run generate` aus, um Prisma Client zu generieren
+- Prüfe die `.env` Datei auf korrekte Werte
 
 ### iOS-App kann Backend nicht erreichen
 
-- Prüfe Backend-URL in `APIClient.swift`
-- Für physisches Gerät: Nutze IP-Adresse statt `localhost`
+- Prüfe die `baseURL` in `APIClient.swift`
+- Für physische Geräte: Backend muss über lokales Netzwerk erreichbar sein
 - Prüfe Firewall-Einstellungen
-- Prüfe, ob Backend läuft: `curl http://localhost:3000/health`
 
 ### PDF-Import schlägt fehl
 
-- Prüfe `OPENAI_API_KEY` in `.env`
-- Prüfe API-Key-Gültigkeit und Credits
-- Prüfe PDF-Größe (max. 10MB)
-- Prüfe Server-Logs
+- Prüfe, ob `OPENAI_API_KEY` gesetzt ist
+- Prüfe OpenAI API Limits und Credits
+- PDF-Datei sollte nicht größer als 10 MB sein
 
 ---
 
-## 📄 Lizenz
+## 📝 Lizenz
 
 MIT License
 
@@ -447,9 +401,11 @@ Beiträge sind willkommen! Bitte erstelle einen Pull Request oder öffne ein Iss
 
 ---
 
-## 📧 Support
+## 📞 Support
 
-Bei Fragen oder Problemen öffne bitte ein Issue im Repository.
+Bei Fragen oder Problemen:
+- Öffne ein Issue im Repository
+- Prüfe die API-Dokumentation in `backend/openapi.yaml`
 
 ---
 

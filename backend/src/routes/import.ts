@@ -1,19 +1,19 @@
-import express from "express";
+import { Router, Request, Response } from "express";
 import multer from "multer";
 import { PrismaClient } from "@prisma/client";
-import { authenticateToken, AuthRequest } from "../middleware/auth";
-import { generateCardsFromPDF } from "../services/pdfService";
+import { authenticateToken } from "../middleware/auth";
+import { extractTextFromPDF, chunkText } from "../services/pdfService";
 import { generateCardsFromText } from "../services/openaiService";
 import { initializeCardState } from "../fsrs/fsrs";
 
-const router = express.Router();
+const router = Router();
 const prisma = new PrismaClient();
 
-// Configure multer for file uploads
+// Multer-Konfiguration für PDF-Upload
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
+    fileSize: 10 * 1024 * 1024, // 10 MB
   },
   fileFilter: (req, file, cb) => {
     if (file.mimetype === "application/pdf") {
@@ -26,30 +26,30 @@ const upload = multer({
 
 /**
  * POST /api/import/pdf
- * Import flashcards from PDF
+ * Importiert Karten aus einem PDF
  */
 router.post(
   "/pdf",
   authenticateToken,
   upload.single("file"),
-  async (req: AuthRequest, res) => {
+  async (req: Request, res: Response) => {
     try {
-      const { boxId, sourceLanguage, targetLanguage, maxCards } = req.body;
-      const file = req.file;
+      const userId = (req as any).userId;
+      const { boxId, sourceLanguage, targetLanguage } = req.body;
 
       if (!boxId) {
         return res.status(400).json({ error: "boxId is required" });
       }
 
-      if (!file) {
+      if (!req.file) {
         return res.status(400).json({ error: "PDF file is required" });
       }
 
-      // Verify box ownership
+      // Prüfe, ob Box existiert und dem Benutzer gehört
       const box = await prisma.box.findFirst({
         where: {
           id: boxId,
-          userId: req.userId!,
+          userId,
         },
       });
 
@@ -57,32 +57,49 @@ router.post(
         return res.status(404).json({ error: "Box not found" });
       }
 
-      // Check OpenAI API key
-      if (!process.env.OPENAI_API_KEY) {
-        return res.status(500).json({
-          error: "OpenAI API key not configured on server",
-        });
+      // Extrahiere Text aus PDF
+      const text = await extractTextFromPDF(req.file.buffer);
+
+      if (!text || text.trim().length === 0) {
+        return res.status(400).json({ error: "Could not extract text from PDF" });
       }
 
-      // Generate cards from PDF
-      const generatedCards = await generateCardsFromPDF(file.buffer, {
-        sourceLanguage,
-        targetLanguage,
-        maxCards: maxCards ? parseInt(maxCards) : undefined,
-      });
+      // Teile Text in Chunks
+      const chunks = chunkText(text, 3000);
 
-      // Initialize FSRS state for all cards
+      // Generiere Karten aus jedem Chunk
+      const allCards: Array<{ front: string; back: string; tags?: string }> = [];
+
+      for (const chunk of chunks) {
+        try {
+          const cards = await generateCardsFromText(
+            chunk,
+            sourceLanguage || "Deutsch",
+            targetLanguage || "Englisch"
+          );
+          allCards.push(...cards);
+        } catch (error: any) {
+          console.error("Error generating cards from chunk:", error);
+          // Weiter mit nächstem Chunk
+        }
+      }
+
+      if (allCards.length === 0) {
+        return res.status(400).json({ error: "No cards could be generated from PDF" });
+      }
+
+      // Initialisiere FSRS-State für alle Karten
       const initialState = initializeCardState();
 
-      // Save cards to database
-      const savedCards = await Promise.all(
-        generatedCards.map((card) =>
+      // Speichere Karten in DB
+      const createdCards = await Promise.all(
+        allCards.map((cardData) =>
           prisma.card.create({
             data: {
               boxId,
-              front: card.front,
-              back: card.back,
-              tags: card.tags || null,
+              front: cardData.front,
+              back: cardData.back,
+              tags: cardData.tags || null,
               stability: initialState.stability,
               difficulty: initialState.difficulty,
               reps: initialState.reps,
@@ -94,37 +111,34 @@ router.post(
       );
 
       res.status(201).json({
-        message: `Successfully imported ${savedCards.length} cards`,
-        cards: savedCards,
+        message: `Successfully imported ${createdCards.length} cards`,
+        cards: createdCards,
       });
     } catch (error: any) {
       console.error("PDF import error:", error);
-      res.status(500).json({
-        error: error.message || "Failed to import PDF",
-      });
+      res.status(500).json({ error: `Import failed: ${error.message}` });
     }
   }
 );
 
 /**
  * POST /api/import/text
- * Import flashcards from text
+ * Importiert Karten aus rohem Text
  */
-router.post("/text", authenticateToken, async (req: AuthRequest, res) => {
+router.post("/text", authenticateToken, async (req: Request, res: Response) => {
   try {
-    const { boxId, text, sourceLanguage, targetLanguage, maxCards } = req.body;
+    const userId = (req as any).userId;
+    const { boxId, text, sourceLanguage, targetLanguage } = req.body;
 
     if (!boxId || !text) {
-      return res.status(400).json({
-        error: "boxId and text are required",
-      });
+      return res.status(400).json({ error: "boxId and text are required" });
     }
 
-    // Verify box ownership
+    // Prüfe, ob Box existiert und dem Benutzer gehört
     const box = await prisma.box.findFirst({
       where: {
         id: boxId,
-        userId: req.userId!,
+        userId,
       },
     });
 
@@ -132,32 +146,41 @@ router.post("/text", authenticateToken, async (req: AuthRequest, res) => {
       return res.status(404).json({ error: "Box not found" });
     }
 
-    // Check OpenAI API key
-    if (!process.env.OPENAI_API_KEY) {
-      return res.status(500).json({
-        error: "OpenAI API key not configured on server",
-      });
+    // Teile Text in Chunks
+    const chunks = chunkText(text, 3000);
+
+    // Generiere Karten aus jedem Chunk
+    const allCards: Array<{ front: string; back: string; tags?: string }> = [];
+
+    for (const chunk of chunks) {
+      try {
+        const cards = await generateCardsFromText(
+          chunk,
+          sourceLanguage || "Deutsch",
+          targetLanguage || "Englisch"
+        );
+        allCards.push(...cards);
+      } catch (error: any) {
+        console.error("Error generating cards from chunk:", error);
+      }
     }
 
-    // Generate cards from text
-    const generatedCards = await generateCardsFromText(text, {
-      sourceLanguage,
-      targetLanguage,
-      maxCards: maxCards ? parseInt(maxCards) : undefined,
-    });
+    if (allCards.length === 0) {
+      return res.status(400).json({ error: "No cards could be generated from text" });
+    }
 
-    // Initialize FSRS state for all cards
+    // Initialisiere FSRS-State
     const initialState = initializeCardState();
 
-    // Save cards to database
-    const savedCards = await Promise.all(
-      generatedCards.map((card) =>
+    // Speichere Karten in DB
+    const createdCards = await Promise.all(
+      allCards.map((cardData) =>
         prisma.card.create({
           data: {
             boxId,
-            front: card.front,
-            back: card.back,
-            tags: card.tags || null,
+            front: cardData.front,
+            back: cardData.back,
+            tags: cardData.tags || null,
             stability: initialState.stability,
             difficulty: initialState.difficulty,
             reps: initialState.reps,
@@ -169,14 +192,12 @@ router.post("/text", authenticateToken, async (req: AuthRequest, res) => {
     );
 
     res.status(201).json({
-      message: `Successfully imported ${savedCards.length} cards`,
-      cards: savedCards,
+      message: `Successfully imported ${createdCards.length} cards`,
+      cards: createdCards,
     });
   } catch (error: any) {
     console.error("Text import error:", error);
-    res.status(500).json({
-      error: error.message || "Failed to import text",
-    });
+    res.status(500).json({ error: `Import failed: ${error.message}` });
   }
 });
 

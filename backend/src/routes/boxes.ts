@@ -1,18 +1,20 @@
-import express from "express";
+import { Router, Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
-import { authenticateToken, AuthRequest } from "../middleware/auth";
+import { authenticateToken } from "../middleware/auth";
 
-const router = express.Router();
+const router = Router();
 const prisma = new PrismaClient();
 
 /**
  * GET /api/boxes
- * Get all boxes for the current user
+ * Liefert alle Boxen des aktuellen Benutzers
  */
-router.get("/", authenticateToken, async (req: AuthRequest, res) => {
+router.get("/", authenticateToken, async (req: Request, res: Response) => {
   try {
+    const userId = (req as any).userId;
+
     const boxes = await prisma.box.findMany({
-      where: { userId: req.userId! },
+      where: { userId },
       orderBy: { createdAt: "desc" },
       include: {
         _count: {
@@ -22,7 +24,7 @@ router.get("/", authenticateToken, async (req: AuthRequest, res) => {
     });
 
     res.json({ boxes });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Get boxes error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
@@ -30,10 +32,11 @@ router.get("/", authenticateToken, async (req: AuthRequest, res) => {
 
 /**
  * POST /api/boxes
- * Create a new box
+ * Erstellt eine neue Box
  */
-router.post("/", authenticateToken, async (req: AuthRequest, res) => {
+router.post("/", authenticateToken, async (req: Request, res: Response) => {
   try {
+    const userId = (req as any).userId;
     const { name } = req.body;
 
     if (!name || name.trim().length === 0) {
@@ -43,17 +46,12 @@ router.post("/", authenticateToken, async (req: AuthRequest, res) => {
     const box = await prisma.box.create({
       data: {
         name: name.trim(),
-        userId: req.userId!,
-      },
-      include: {
-        _count: {
-          select: { cards: true },
-        },
+        userId,
       },
     });
 
     res.status(201).json({ box });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Create box error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
@@ -61,10 +59,11 @@ router.post("/", authenticateToken, async (req: AuthRequest, res) => {
 
 /**
  * PUT /api/boxes/:boxId
- * Update a box
+ * Aktualisiert eine Box (z.B. Name ändern)
  */
-router.put("/:boxId", authenticateToken, async (req: AuthRequest, res) => {
+router.put("/:boxId", authenticateToken, async (req: Request, res: Response) => {
   try {
+    const userId = (req as any).userId;
     const { boxId } = req.params;
     const { name } = req.body;
 
@@ -72,30 +71,25 @@ router.put("/:boxId", authenticateToken, async (req: AuthRequest, res) => {
       return res.status(400).json({ error: "Box name is required" });
     }
 
-    // Verify ownership
-    const existingBox = await prisma.box.findFirst({
+    // Prüfe, ob Box existiert und dem Benutzer gehört
+    const box = await prisma.box.findFirst({
       where: {
         id: boxId,
-        userId: req.userId!,
+        userId,
       },
     });
 
-    if (!existingBox) {
+    if (!box) {
       return res.status(404).json({ error: "Box not found" });
     }
 
-    const box = await prisma.box.update({
+    const updatedBox = await prisma.box.update({
       where: { id: boxId },
       data: { name: name.trim() },
-      include: {
-        _count: {
-          select: { cards: true },
-        },
-      },
     });
 
-    res.json({ box });
-  } catch (error) {
+    res.json({ box: updatedBox });
+  } catch (error: any) {
     console.error("Update box error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
@@ -103,30 +97,32 @@ router.put("/:boxId", authenticateToken, async (req: AuthRequest, res) => {
 
 /**
  * DELETE /api/boxes/:boxId
- * Delete a box (cascades to cards and review logs)
+ * Löscht eine Box (inkl. aller Karten und ReviewLogs)
  */
-router.delete("/:boxId", authenticateToken, async (req: AuthRequest, res) => {
+router.delete("/:boxId", authenticateToken, async (req: Request, res: Response) => {
   try {
+    const userId = (req as any).userId;
     const { boxId } = req.params;
 
-    // Verify ownership
-    const existingBox = await prisma.box.findFirst({
+    // Prüfe, ob Box existiert und dem Benutzer gehört
+    const box = await prisma.box.findFirst({
       where: {
         id: boxId,
-        userId: req.userId!,
+        userId,
       },
     });
 
-    if (!existingBox) {
+    if (!box) {
       return res.status(404).json({ error: "Box not found" });
     }
 
+    // Box löschen (Cascade löscht automatisch Cards und ReviewLogs)
     await prisma.box.delete({
       where: { id: boxId },
     });
 
     res.json({ message: "Box deleted successfully" });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Delete box error:", error);
     res.status(500).json({ error: "Internal server error" });
   }

@@ -36,21 +36,21 @@ model Box {
 }
 
 model Card {
-  id          String    @id @default(cuid())
-  boxId       String    @map("box_id")
+  id          String   @id @default(cuid())
+  boxId       String   @map("box_id")
   front       String
   back        String
-  tags        String?   // Comma-separated tags
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  tags        String?  // Kommagetrennte Tags
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
-  // FSRS-5 fields
-  stability   Float     @default(0.4) // Initial stability in days
-  difficulty  Float     @default(0.3) // Difficulty factor (0-1)
-  reps        Int       @default(0) // Number of successful reviews
-  lapses      Int       @default(0) // Number of times rated "again"
+  // FSRS-5 Felder
+  stability   Float    @default(0.4) // Initial stability
+  difficulty  Float    @default(0.3) // Initial difficulty
+  reps        Int      @default(0)   // Anzahl erfolgreicher Wiederholungen
+  lapses      Int      @default(0)   // Anzahl Fehler
   lastReviewAt DateTime? @map("last_review_at")
-  due         DateTime  @default(now()) // Next review due date
+  due         DateTime @default(now()) @map("due")
 
   box        Box         @relation(fields: [boxId], references: [id], onDelete: Cascade)
   reviewLogs ReviewLog[]
@@ -64,11 +64,13 @@ model ReviewLog {
   userId          String   @map("user_id")
   rating          String   // "again", "hard", "good", "easy"
   reviewedAt      DateTime @default(now()) @map("reviewed_at")
+  
+  // FSRS-5 State vor/nach Review
   previousStability Float  @map("previous_stability")
-  newStability    Float    @map("new_stability")
-  previousDue     DateTime @map("previous_due")
-  newDue          DateTime @map("new_due")
-  interval        Int?     // Interval in days
+  newStability      Float  @map("new_stability")
+  previousDue       DateTime @map("previous_due")
+  newDue            DateTime @map("new_due")
+  interval          Int?     // Interval in Tagen
 
   card Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

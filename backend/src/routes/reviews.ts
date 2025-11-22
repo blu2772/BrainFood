@@ -1,25 +1,26 @@
-import express from "express";
+import { Router, Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
-import { authenticateToken, AuthRequest } from "../middleware/auth";
-import { scheduleNextReview, ReviewRating } from "../fsrs/fsrs";
+import { authenticateToken } from "../middleware/auth";
+import { scheduleNextReview, isCardDue } from "../fsrs/fsrs";
 
-const router = express.Router();
+const router = Router();
 const prisma = new PrismaClient();
 
 /**
  * GET /api/boxes/:boxId/reviews/next
- * Get the next due card(s) for review
+ * Liefert die nächste(n) fällige(n) Karte(n) für Review
  */
-router.get("/boxes/:boxId/reviews/next", authenticateToken, async (req: AuthRequest, res) => {
+router.get("/boxes/:boxId/reviews/next", authenticateToken, async (req: Request, res: Response) => {
   try {
+    const userId = (req as any).userId;
     const { boxId } = req.params;
     const limit = parseInt(req.query.limit as string) || 1;
 
-    // Verify box ownership
+    // Prüfe, ob Box existiert und dem Benutzer gehört
     const box = await prisma.box.findFirst({
       where: {
         id: boxId,
-        userId: req.userId!,
+        userId,
       },
     });
 
@@ -27,9 +28,8 @@ router.get("/boxes/:boxId/reviews/next", authenticateToken, async (req: AuthRequ
       return res.status(404).json({ error: "Box not found" });
     }
 
+    // Finde fällige Karten (due <= now), sortiert nach ältestem due zuerst
     const now = new Date();
-
-    // Get due cards, sorted by oldest due date first
     const cards = await prisma.card.findMany({
       where: {
         boxId,
@@ -43,8 +43,8 @@ router.get("/boxes/:boxId/reviews/next", authenticateToken, async (req: AuthRequ
       take: limit,
     });
 
-    res.json({ cards });
-  } catch (error) {
+    res.json({ cards, count: cards.length });
+  } catch (error: any) {
     console.error("Get next reviews error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
@@ -52,25 +52,26 @@ router.get("/boxes/:boxId/reviews/next", authenticateToken, async (req: AuthRequ
 
 /**
  * POST /api/cards/:cardId/review
- * Submit a review rating for a card
+ * Verarbeitet eine Review-Bewertung und aktualisiert den FSRS-State
  */
-router.post("/cards/:cardId/review", authenticateToken, async (req: AuthRequest, res) => {
+router.post("/cards/:cardId/review", authenticateToken, async (req: Request, res: Response) => {
   try {
+    const userId = (req as any).userId;
     const { cardId } = req.params;
     const { rating } = req.body;
 
     if (!rating || !["again", "hard", "good", "easy"].includes(rating)) {
-      return res.status(400).json({
-        error: "Rating must be one of: again, hard, good, easy",
+      return res.status(400).json({ 
+        error: "Rating is required and must be one of: again, hard, good, easy" 
       });
     }
 
-    // Get card and verify ownership
+    // Lade Karte mit Prüfung auf Besitz
     const card = await prisma.card.findFirst({
       where: {
         id: cardId,
         box: {
-          userId: req.userId!,
+          userId,
         },
       },
     });
@@ -79,8 +80,8 @@ router.post("/cards/:cardId/review", authenticateToken, async (req: AuthRequest,
       return res.status(404).json({ error: "Card not found" });
     }
 
-    // Get current card state
-    const currentState = {
+    // Erstelle CardState aus DB-Daten
+    const cardState = {
       stability: card.stability,
       difficulty: card.difficulty,
       reps: card.reps,
@@ -89,52 +90,48 @@ router.post("/cards/:cardId/review", authenticateToken, async (req: AuthRequest,
       due: card.due,
     };
 
-    // Calculate new state using FSRS-5
+    // Berechne neuen State mit FSRS-5
     const now = new Date();
-    const result = scheduleNextReview(
-      currentState,
-      rating as ReviewRating,
-      now
-    );
+    const fsrsResult = scheduleNextReview(cardState, rating as any, now);
 
-    // Save previous state for review log
+    // Speichere alten State für ReviewLog
     const previousStability = card.stability;
     const previousDue = card.due;
 
-    // Update card with new state
+    // Aktualisiere Karte
     const updatedCard = await prisma.card.update({
       where: { id: cardId },
       data: {
-        stability: result.newState.stability,
-        difficulty: result.newState.difficulty,
-        reps: result.newState.reps,
-        lapses: result.newState.lapses,
-        lastReviewAt: result.newState.lastReviewAt,
-        due: result.newState.due,
+        stability: fsrsResult.newState.stability,
+        difficulty: fsrsResult.newState.difficulty,
+        reps: fsrsResult.newState.reps,
+        lapses: fsrsResult.newState.lapses,
+        lastReviewAt: fsrsResult.newState.lastReviewAt,
+        due: fsrsResult.newState.due,
       },
     });
 
-    // Create review log entry
+    // Erstelle ReviewLog-Eintrag
     await prisma.reviewLog.create({
       data: {
         cardId,
-        userId: req.userId!,
+        userId,
         rating,
         previousStability,
-        newStability: result.newState.stability,
+        newStability: fsrsResult.newState.stability,
         previousDue,
-        newDue: result.newState.due,
-        interval: result.interval,
+        newDue: fsrsResult.newState.due,
+        interval: fsrsResult.interval,
       },
     });
 
     res.json({
       card: updatedCard,
-      nextDue: result.newState.due,
-      interval: result.interval,
+      nextDue: fsrsResult.nextDue,
+      interval: fsrsResult.interval,
     });
-  } catch (error) {
-    console.error("Review card error:", error);
+  } catch (error: any) {
+    console.error("Review error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -1,3 +1,10 @@
+//
+//  LearningView.swift
+//  BrainFood
+//
+//  Created on 22.11.25.
+//
+
 import SwiftUI
 
 struct LearningView: View {
@@ -11,37 +18,66 @@ struct LearningView: View {
     
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
+            VStack(spacing: 20) {
                 // Stats Section
                 if let stats = viewModel.stats {
                     StatsCard(stats: stats)
                 }
                 
                 // Card Display
-                if viewModel.isLoading && viewModel.currentCard == nil {
-                    ProgressView("Lade Karte...")
-                        .frame(height: 400)
+                if viewModel.isLoading {
+                    ProgressView()
+                        .frame(height: 200)
                 } else if let card = viewModel.currentCard {
-                    CardDisplayView(
-                        card: card,
-                        showAnswer: $viewModel.showAnswer,
-                        onShowAnswer: {
+                    CardView(card: card, showAnswer: viewModel.showAnswer)
+                        .padding()
+                    
+                    if !viewModel.showAnswer {
+                        Button("Antwort anzeigen") {
                             viewModel.showAnswer = true
                         }
-                    )
-                    
-                    if viewModel.showAnswer {
-                        ReviewButtonsView(
-                            isLoading: viewModel.isLoading,
-                            onSubmit: { rating in
+                        .buttonStyle(.borderedProminent)
+                    } else {
+                        // Rating Buttons
+                        HStack(spacing: 15) {
+                            RatingButton(title: "Again", color: .red, rating: "again") {
                                 Task {
-                                    await viewModel.submitReview(rating: rating)
+                                    await viewModel.reviewCard(rating: "again")
                                 }
                             }
-                        )
+                            RatingButton(title: "Hard", color: .orange, rating: "hard") {
+                                Task {
+                                    await viewModel.reviewCard(rating: "hard")
+                                }
+                            }
+                            RatingButton(title: "Good", color: .green, rating: "good") {
+                                Task {
+                                    await viewModel.reviewCard(rating: "good")
+                                }
+                            }
+                            RatingButton(title: "Easy", color: .blue, rating: "easy") {
+                                Task {
+                                    await viewModel.reviewCard(rating: "easy")
+                                }
+                            }
+                        }
+                        .padding()
                     }
                 } else {
-                    EmptyLearningState(nextDue: viewModel.stats?.nextDue)
+                    // Empty State
+                    VStack(spacing: 20) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 60))
+                            .foregroundColor(.green)
+                        Text("Heute ist alles erledigt!")
+                            .font(.headline)
+                        if let nextDue = viewModel.stats?.nextDue {
+                            Text("Nächste Karte fällig: \(formatDate(nextDue))")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding()
                 }
             }
             .padding()
@@ -50,6 +86,21 @@ struct LearningView: View {
             await viewModel.loadStats()
             await viewModel.loadNextCard()
         }
+        .refreshable {
+            await viewModel.loadStats()
+            await viewModel.loadNextCard()
+        }
+    }
+    
+    private func formatDate(_ dateString: String) -> String {
+        let formatter = ISO8601DateFormatter()
+        if let date = formatter.date(from: dateString) {
+            let displayFormatter = DateFormatter()
+            displayFormatter.dateStyle = .medium
+            displayFormatter.timeStyle = .short
+            return displayFormatter.string(from: date)
+        }
+        return dateString
     }
 }
 
@@ -57,10 +108,9 @@ struct StatsCard: View {
     let stats: BoxStats
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             Text("Statistiken")
                 .font(.headline)
-            
             HStack {
                 VStack(alignment: .leading) {
                     Text("\(stats.dueCount)")
@@ -68,24 +118,25 @@ struct StatsCard: View {
                         .fontWeight(.bold)
                     Text("Fällig")
                         .font(.caption)
-                        .foregroundColor(.gray)
+                        .foregroundColor(.secondary)
                 }
-                
                 Spacer()
-                
-                VStack(alignment: .trailing) {
-                    if let nextDue = stats.nextDue {
-                        Text(nextDue, style: .relative)
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                    } else {
-                        Text("Keine")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                    }
-                    Text("Nächste Fälligkeit")
+                VStack(alignment: .leading) {
+                    Text("\(stats.totalCards)")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                    Text("Gesamt")
                         .font(.caption)
-                        .foregroundColor(.gray)
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                VStack(alignment: .leading) {
+                    Text("\(stats.totalReviews)")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                    Text("Wiederholungen")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             }
         }
@@ -95,153 +146,69 @@ struct StatsCard: View {
     }
 }
 
-struct CardDisplayView: View {
+struct CardView: View {
     let card: Card
-    @Binding var showAnswer: Bool
-    let onShowAnswer: () -> Void
+    let showAnswer: Bool
     
     var body: some View {
         VStack(spacing: 20) {
-            // Front
-            VStack(spacing: 12) {
-                Text("Vorderseite")
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Frage")
                     .font(.caption)
-                    .foregroundColor(.gray)
+                    .foregroundColor(.secondary)
                 Text(card.front)
                     .font(.title2)
-                    .fontWeight(.semibold)
-                    .multilineTextAlignment(.center)
-                    .padding()
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 200)
-            .background(Color.blue.opacity(0.1))
-            .cornerRadius(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+            .background(Color(.systemGray6))
+            .cornerRadius(12)
             
-            if !showAnswer {
-                Button(action: onShowAnswer) {
-                    Text("Antwort anzeigen")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-            } else {
-                // Back
-                VStack(spacing: 12) {
-                    Text("Rückseite")
+            if showAnswer {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Antwort")
                         .font(.caption)
-                        .foregroundColor(.gray)
+                        .foregroundColor(.secondary)
                     Text(card.back)
                         .font(.title3)
-                        .multilineTextAlignment(.center)
-                        .padding()
                     
-                    if !card.tagsArray.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack {
-                                ForEach(card.tagsArray, id: \.self) { tag in
-                                    Text(tag)
-                                        .font(.caption)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(Color.blue.opacity(0.2))
-                                        .cornerRadius(8)
-                                }
-                            }
-                        }
+                    if let tags = card.tags, !tags.isEmpty {
+                        Text("Tags: \(tags)")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                            .padding(.top, 5)
                     }
                 }
-                .frame(maxWidth: .infinity)
-                .frame(height: 200)
-                .background(Color.green.opacity(0.1))
-                .cornerRadius(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+                .background(Color(.systemGray6))
+                .cornerRadius(12)
             }
         }
     }
 }
 
-struct ReviewButtonsView: View {
-    let isLoading: Bool
-    let onSubmit: (ReviewRating) -> Void
-    
-    var body: some View {
-        VStack(spacing: 12) {
-            Text("Wie war es?")
-                .font(.headline)
-            
-            HStack(spacing: 12) {
-                ReviewButton(
-                    rating: .again,
-                    color: .red,
-                    action: { onSubmit(.again) },
-                    disabled: isLoading
-                )
-                ReviewButton(
-                    rating: .hard,
-                    color: .orange,
-                    action: { onSubmit(.hard) },
-                    disabled: isLoading
-                )
-                ReviewButton(
-                    rating: .good,
-                    color: .green,
-                    action: { onSubmit(.good) },
-                    disabled: isLoading
-                )
-                ReviewButton(
-                    rating: .easy,
-                    color: .blue,
-                    action: { onSubmit(.easy) },
-                    disabled: isLoading
-                )
-            }
-        }
-    }
-}
-
-struct ReviewButton: View {
-    let rating: ReviewRating
+struct RatingButton: View {
+    let title: String
     let color: Color
+    let rating: String
     let action: () -> Void
-    let disabled: Bool
     
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 4) {
-                Text(rating.displayName)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .background(color.opacity(0.2))
-            .foregroundColor(color)
-            .cornerRadius(12)
+            Text(title)
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(color)
+                .cornerRadius(8)
         }
-        .disabled(disabled)
     }
 }
 
-struct EmptyLearningState: View {
-    let nextDue: Date?
-    
-    var body: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 60))
-                .foregroundColor(.green)
-            Text("Heute ist alles erledigt!")
-                .font(.title2)
-                .fontWeight(.semibold)
-            
-            if let nextDue = nextDue {
-                Text("Nächste Karte fällig:")
-                    .font(.caption)
-                    .foregroundColor(.gray)
-                Text(nextDue, style: .relative)
-                    .font(.headline)
-            }
-        }
-        .frame(height: 400)
-    }
+#Preview {
+    LearningView(boxId: "1")
 }
 

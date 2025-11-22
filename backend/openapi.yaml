@@ -2,8 +2,10 @@ openapi: 3.0.0
 info:
   title: BrainFood API
   description: |
-    REST API for BrainFood - a vocabulary learning app with FSRS-5 spaced repetition algorithm.
-    This API allows creating and managing flashcards, boxes, and reviews.
+    REST API für die BrainFood Vokabel-App mit FSRS-5 Spaced Repetition Algorithmus.
+    
+    Diese API ermöglicht die Verwaltung von Boxen, Karteikarten und die intelligente
+    Wiederholungsplanung basierend auf dem FSRS-5 Algorithmus.
   version: 1.0.0
   contact:
     name: BrainFood API Support
@@ -14,48 +16,245 @@ servers:
   - url: https://your-domain.com/api
     description: Production server
 
+tags:
+  - name: Authentication
+    description: User authentication endpoints
+  - name: Boxes
+    description: Box management endpoints
+  - name: Cards
+    description: Card management endpoints
+  - name: Reviews
+    description: Spaced repetition review endpoints
+  - name: Import
+    description: Import cards from PDF or text
+
 security:
   - bearerAuth: []
 
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from /auth/login or /auth/register
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    Box:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    Card:
+      type: object
+      properties:
+        id:
+          type: string
+        boxId:
+          type: string
+        front:
+          type: string
+          description: Question or word to learn
+        back:
+          type: string
+          description: Answer or translation
+        tags:
+          type: string
+          nullable: true
+          description: Comma-separated tags
+        stability:
+          type: number
+          description: FSRS-5 stability value
+        difficulty:
+          type: number
+          description: FSRS-5 difficulty value (0-1)
+        reps:
+          type: integer
+          description: Number of successful repetitions
+        lapses:
+          type: integer
+          description: Number of failures
+        lastReviewAt:
+          type: string
+          format: date-time
+          nullable: true
+        due:
+          type: string
+          format: date-time
+          description: Next due date for review
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ReviewRating:
+      type: string
+      enum: [again, hard, good, easy]
+      description: User rating for card review
+
+    AuthRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+
+    RegisterRequest:
+      type: object
+      required:
+        - name
+        - email
+        - password
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+
+    AuthResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        token:
+          type: string
+          description: JWT access token
+
+    CreateBoxRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+
+    CreateCardRequest:
+      type: object
+      required:
+        - front
+        - back
+      properties:
+        front:
+          type: string
+        back:
+          type: string
+        tags:
+          type: string
+          nullable: true
+
+    ReviewRequest:
+      type: object
+      required:
+        - rating
+      properties:
+        rating:
+          $ref: '#/components/schemas/ReviewRating'
+
+    ReviewResponse:
+      type: object
+      properties:
+        card:
+          $ref: '#/components/schemas/Card'
+        nextDue:
+          type: string
+          format: date-time
+        interval:
+          type: integer
+          description: Interval in days
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+
 paths:
-  /auth/login:
+  /auth/register:
     post:
-      summary: Login user
-      description: Authenticate user with email and password, returns JWT token
       tags:
         - Authentication
+      summary: Register a new user
+      description: Creates a new user account and returns a JWT token
       security: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - email
-                - password
-              properties:
-                email:
-                  type: string
-                  format: email
-                  example: user@example.com
-                password:
-                  type: string
-                  format: password
-                  example: securepassword123
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login user
+      description: Authenticates a user and returns a JWT token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthRequest'
       responses:
         '200':
           description: Login successful
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  user:
-                    $ref: '#/components/schemas/User'
-                  token:
-                    type: string
-                    description: JWT access token
+                $ref: '#/components/schemas/AuthResponse'
         '401':
           description: Invalid credentials
           content:
@@ -63,12 +262,35 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /auth/me:
+    get:
+      tags:
+        - Authentication
+      summary: Get current user
+      description: Returns information about the currently authenticated user
+      responses:
+        '200':
+          description: User information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /boxes:
     get:
-      summary: List all boxes
-      description: Returns all boxes owned by the authenticated user
       tags:
         - Boxes
+      summary: Get all boxes
+      description: Returns all boxes for the current user
       responses:
         '200':
           description: List of boxes
@@ -81,23 +303,18 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Box'
+
     post:
-      summary: Create a new box
-      description: Creates a new flashcard box for the authenticated user
       tags:
         - Boxes
+      summary: Create a new box
+      description: Creates a new box for organizing flashcards
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - name
-              properties:
-                name:
-                  type: string
-                  example: German Vocabulary
+              $ref: '#/components/schemas/CreateBoxRequest'
       responses:
         '201':
           description: Box created successfully
@@ -111,10 +328,10 @@ paths:
 
   /boxes/{boxId}:
     put:
-      summary: Update a box
-      description: Updates the name of an existing box
       tags:
         - Boxes
+      summary: Update a box
+      description: Updates the name of a box
       parameters:
         - name: boxId
           in: path
@@ -126,12 +343,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - name
-              properties:
-                name:
-                  type: string
+              $ref: '#/components/schemas/CreateBoxRequest'
       responses:
         '200':
           description: Box updated successfully
@@ -142,11 +354,12 @@ paths:
                 properties:
                   box:
                     $ref: '#/components/schemas/Box'
+
     delete:
-      summary: Delete a box
-      description: Deletes a box and all its cards
       tags:
         - Boxes
+      summary: Delete a box
+      description: Deletes a box and all its cards
       parameters:
         - name: boxId
           in: path
@@ -156,13 +369,20 @@ paths:
       responses:
         '200':
           description: Box deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
 
   /boxes/{boxId}/cards:
     get:
-      summary: List cards in a box
-      description: Returns all cards in a specific box, optionally filtered by search query
       tags:
         - Cards
+      summary: Get all cards in a box
+      description: Returns all cards in a specific box, optionally filtered by search query
       parameters:
         - name: boxId
           in: path
@@ -173,13 +393,13 @@ paths:
           in: query
           schema:
             type: string
-          description: Search term to filter cards by front or back text
+          description: Search term to filter cards
         - name: sort
           in: query
           schema:
             type: string
-            enum: [due, createdAt]
-          description: Sort order (default: createdAt)
+            enum: [due]
+          description: Sort order (by due date)
       responses:
         '200':
           description: List of cards
@@ -192,11 +412,12 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Card'
+
     post:
-      summary: Create a new card
-      description: Creates a new flashcard in the specified box with initial FSRS-5 state
       tags:
         - Cards
+      summary: Create a new card
+      description: Creates a new flashcard in a box with initial FSRS-5 state
       parameters:
         - name: boxId
           in: path
@@ -208,23 +429,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - front
-                - back
-              properties:
-                front:
-                  type: string
-                  description: Front side of the card (question/word)
-                  example: "Haus"
-                back:
-                  type: string
-                  description: Back side of the card (answer/translation)
-                  example: "House"
-                tags:
-                  type: string
-                  description: Comma-separated tags
-                  example: "noun, basic"
+              $ref: '#/components/schemas/CreateCardRequest'
       responses:
         '201':
           description: Card created successfully
@@ -238,10 +443,10 @@ paths:
 
   /cards/{cardId}:
     get:
-      summary: Get a single card
-      description: Returns details of a specific card
       tags:
         - Cards
+      summary: Get card details
+      description: Returns detailed information about a specific card
       parameters:
         - name: cardId
           in: path
@@ -258,11 +463,12 @@ paths:
                 properties:
                   card:
                     $ref: '#/components/schemas/Card'
+
     put:
-      summary: Update a card
-      description: Updates the front, back, or tags of a card
       tags:
         - Cards
+      summary: Update a card
+      description: Updates the front, back, or tags of a card
       parameters:
         - name: cardId
           in: path
@@ -274,14 +480,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                front:
-                  type: string
-                back:
-                  type: string
-                tags:
-                  type: string
+              $ref: '#/components/schemas/CreateCardRequest'
       responses:
         '200':
           description: Card updated successfully
@@ -292,11 +491,12 @@ paths:
                 properties:
                   card:
                     $ref: '#/components/schemas/Card'
+
     delete:
-      summary: Delete a card
-      description: Permanently deletes a card
       tags:
         - Cards
+      summary: Delete a card
+      description: Deletes a flashcard
       parameters:
         - name: cardId
           in: path
@@ -306,13 +506,20 @@ paths:
       responses:
         '200':
           description: Card deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
 
   /boxes/{boxId}/reviews/next:
     get:
-      summary: Get next due cards
-      description: Returns the next card(s) that are due for review based on FSRS-5 algorithm
       tags:
         - Reviews
+      summary: Get next due cards
+      description: Returns the next card(s) that are due for review based on FSRS-5 scheduling
       parameters:
         - name: boxId
           in: path
@@ -337,15 +544,17 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Card'
+                  count:
+                    type: integer
 
   /cards/{cardId}/review:
     post:
-      summary: Submit a review
-      description: |
-        Submits a review rating for a card. The FSRS-5 algorithm calculates the new
-        stability, difficulty, and next due date based on the rating.
       tags:
         - Reviews
+      summary: Submit a card review
+      description: |
+        Submits a review rating for a card and updates its FSRS-5 state.
+        The algorithm calculates the next due date and updates stability/difficulty values.
       parameters:
         - name: cardId
           in: path
@@ -357,42 +566,21 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - rating
-              properties:
-                rating:
-                  type: string
-                  enum: [again, hard, good, easy]
-                  description: |
-                    - again: Card was forgotten, reset stability
-                    - hard: Card was difficult to recall
-                    - good: Card was recalled successfully (standard)
-                    - easy: Card was very easy to recall
+              $ref: '#/components/schemas/ReviewRequest'
       responses:
         '200':
-          description: Review submitted successfully
+          description: Review processed successfully
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  card:
-                    $ref: '#/components/schemas/Card'
-                  nextDue:
-                    type: string
-                    format: date-time
-                    description: Next review due date
-                  interval:
-                    type: integer
-                    description: Interval in days until next review
+                $ref: '#/components/schemas/ReviewResponse'
 
   /boxes/{boxId}/stats:
     get:
-      summary: Get box statistics
-      description: Returns statistics about cards, reviews, and learning progress for a box
       tags:
-        - Statistics
+        - Reviews
+      summary: Get box statistics
+      description: Returns statistics about cards and reviews in a box
       parameters:
         - name: boxId
           in: path
@@ -407,34 +595,42 @@ paths:
               schema:
                 type: object
                 properties:
-                  dueCount:
-                    type: integer
-                    description: Number of cards currently due for review
-                  nextDue:
-                    type: string
-                    format: date-time
-                    nullable: true
-                    description: Date of the next card that will become due
-                  totalCards:
-                    type: integer
-                  totalReviews:
-                    type: integer
-                    description: Total number of reviews performed
-                  totalLapses:
-                    type: integer
-                    description: Total number of times cards were rated "again"
-                  recentReviews:
-                    type: integer
-                    description: Number of reviews in the last 7 days
+                  stats:
+                    type: object
+                    properties:
+                      dueCount:
+                        type: integer
+                        description: Number of cards currently due
+                      nextDue:
+                        type: string
+                        format: date-time
+                        nullable: true
+                        description: Date of next card due
+                      totalCards:
+                        type: integer
+                      totalReviews:
+                        type: integer
+                      totalLapses:
+                        type: integer
+                      dailyReviews:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            date:
+                              type: string
+                              format: date-time
+                            count:
+                              type: integer
 
   /import/pdf:
     post:
-      summary: Import flashcards from PDF
-      description: |
-        Uploads a PDF file and uses OpenAI to automatically generate flashcards.
-        The generated cards are saved to the specified box.
       tags:
         - Import
+      summary: Import cards from PDF
+      description: |
+        Uploads a PDF file and uses OpenAI to automatically generate flashcards.
+        The PDF text is extracted, chunked, and sent to OpenAI for card generation.
       requestBody:
         required: true
         content:
@@ -448,22 +644,18 @@ paths:
                 file:
                   type: string
                   format: binary
-                  description: PDF file to process
+                  description: PDF file to import
                 boxId:
                   type: string
-                  description: ID of the box to add cards to
+                  description: Target box ID
                 sourceLanguage:
                   type: string
-                  description: Source language for vocabulary extraction
-                  example: German
+                  default: Deutsch
+                  description: Source language for vocabulary
                 targetLanguage:
                   type: string
-                  description: Target language for translations
-                  example: English
-                maxCards:
-                  type: integer
-                  description: Maximum number of cards to generate
-                  example: 20
+                  default: Englisch
+                  description: Target language for vocabulary
       responses:
         '201':
           description: Cards imported successfully
@@ -478,15 +670,21 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Card'
+        '400':
+          description: Invalid input or file
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /import/text:
     post:
-      summary: Import flashcards from text
-      description: |
-        Processes plain text and uses OpenAI to automatically generate flashcards.
-        The generated cards are saved to the specified box.
       tags:
         - Import
+      summary: Import cards from text
+      description: |
+        Takes raw text and uses OpenAI to automatically generate flashcards.
+        The text is chunked and sent to OpenAI for card generation.
       requestBody:
         required: true
         content:
@@ -494,24 +692,20 @@ paths:
             schema:
               type: object
               required:
-                - text
                 - boxId
+                - text
               properties:
-                text:
-                  type: string
-                  description: Text content to process
                 boxId:
                   type: string
-                  description: ID of the box to add cards to
+                text:
+                  type: string
+                  description: Text content to generate cards from
                 sourceLanguage:
                   type: string
-                  example: German
+                  default: Deutsch
                 targetLanguage:
                   type: string
-                  example: English
-                maxCards:
-                  type: integer
-                  example: 20
+                  default: Englisch
       responses:
         '201':
           description: Cards imported successfully
@@ -526,96 +720,4 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Card'
-
-components:
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-      description: JWT token obtained from /auth/login
-
-  schemas:
-    User:
-      type: object
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-        email:
-          type: string
-          format: email
-        createdAt:
-          type: string
-          format: date-time
-
-    Box:
-      type: object
-      properties:
-        id:
-          type: string
-        userId:
-          type: string
-        name:
-          type: string
-        createdAt:
-          type: string
-          format: date-time
-        _count:
-          type: object
-          properties:
-            cards:
-              type: integer
-
-    Card:
-      type: object
-      properties:
-        id:
-          type: string
-        boxId:
-          type: string
-        front:
-          type: string
-          description: Front side of the card
-        back:
-          type: string
-          description: Back side of the card
-        tags:
-          type: string
-          nullable: true
-          description: Comma-separated tags
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
-        stability:
-          type: number
-          description: Current stability in days (FSRS-5)
-        difficulty:
-          type: number
-          description: Difficulty factor 0-1 (FSRS-5)
-        reps:
-          type: integer
-          description: Number of successful reviews
-        lapses:
-          type: integer
-          description: Number of times rated "again"
-        lastReviewAt:
-          type: string
-          format: date-time
-          nullable: true
-        due:
-          type: string
-          format: date-time
-          description: Next review due date
-
-    Error:
-      type: object
-      properties:
-        error:
-          type: string
-          description: Error message
 

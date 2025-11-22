@@ -1,39 +1,32 @@
 import { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
-
-export interface AuthRequest extends Request {
-  userId?: string;
-}
+import { verifyToken, extractTokenFromHeader } from "../utils/jwt";
 
 /**
- * JWT Authentication Middleware
- * Extracts and validates JWT token from Authorization header
+ * Express Middleware zur Authentifizierung
+ * Prüft das JWT-Token im Authorization-Header
  */
 export function authenticateToken(
-  req: AuthRequest,
+  req: Request,
   res: Response,
   next: NextFunction
 ): void {
-  const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1]; // Bearer TOKEN
+  const authHeader = req.headers.authorization;
+  const token = extractTokenFromHeader(authHeader);
 
   if (!token) {
     res.status(401).json({ error: "Authentication required" });
     return;
   }
 
-  const jwtSecret = process.env.JWT_SECRET;
-  if (!jwtSecret) {
-    res.status(500).json({ error: "Server configuration error" });
-    return;
-  }
-
   try {
-    const decoded = jwt.verify(token, jwtSecret) as { userId: string };
-    req.userId = decoded.userId;
+    const payload = verifyToken(token);
+    // User-ID und E-Mail zum Request hinzufügen
+    (req as any).userId = payload.userId;
+    (req as any).userEmail = payload.email;
     next();
   } catch (error) {
     res.status(403).json({ error: "Invalid or expired token" });
+    return;
   }
 }
 

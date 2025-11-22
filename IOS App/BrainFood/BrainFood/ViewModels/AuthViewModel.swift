@@ -1,6 +1,15 @@
+//
+//  AuthViewModel.swift
+//  BrainFood
+//
+//  Created on 22.11.25.
+//
+
 import Foundation
 import SwiftUI
+import Combine
 
+@MainActor
 class AuthViewModel: ObservableObject {
     @Published var isAuthenticated = false
     @Published var currentUser: User?
@@ -15,13 +24,24 @@ class AuthViewModel: ObservableObject {
     }
     
     func checkAuthStatus() {
-        if let user = keychain.getUser(), let _ = keychain.getToken() {
-            self.currentUser = user
-            self.isAuthenticated = true
+        if keychain.getToken() != nil {
+            Task {
+                await loadCurrentUser()
+            }
         }
     }
     
-    @MainActor
+    func loadCurrentUser() async {
+        do {
+            let user = try await apiClient.getCurrentUser()
+            self.currentUser = user
+            self.isAuthenticated = true
+        } catch {
+            // Token ungültig, ausloggen
+            logout()
+        }
+    }
+    
     func register(name: String, email: String, password: String) async {
         isLoading = true
         errorMessage = nil
@@ -29,17 +49,17 @@ class AuthViewModel: ObservableObject {
         do {
             let response = try await apiClient.register(name: name, email: email, password: password)
             keychain.saveToken(response.token)
-            keychain.saveUser(response.user)
-            currentUser = response.user
-            isAuthenticated = true
+            self.currentUser = response.user
+            self.isAuthenticated = true
+        } catch let error as APIError {
+            errorMessage = error.errorDescription
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Ein Fehler ist aufgetreten"
         }
         
         isLoading = false
     }
     
-    @MainActor
     func login(email: String, password: String) async {
         isLoading = true
         errorMessage = nil
@@ -47,19 +67,19 @@ class AuthViewModel: ObservableObject {
         do {
             let response = try await apiClient.login(email: email, password: password)
             keychain.saveToken(response.token)
-            keychain.saveUser(response.user)
-            currentUser = response.user
-            isAuthenticated = true
+            self.currentUser = response.user
+            self.isAuthenticated = true
+        } catch let error as APIError {
+            errorMessage = error.errorDescription
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Ein Fehler ist aufgetreten"
         }
         
         isLoading = false
     }
     
-    @MainActor
     func logout() {
-        keychain.clearAll()
+        keychain.deleteToken()
         currentUser = nil
         isAuthenticated = false
     }

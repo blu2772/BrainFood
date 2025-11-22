@@ -1,33 +1,40 @@
 import pdfParse from "pdf-parse";
-import { generateCardsFromText } from "./openaiService";
+import { Readable } from "stream";
 
 /**
- * Extract text from PDF buffer
+ * Extrahiert Text aus einem PDF-Buffer
  */
-export async function extractTextFromPDF(
-  pdfBuffer: Buffer
-): Promise<string> {
+export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
   try {
-    const data = await pdfParse(pdfBuffer);
+    const data = await pdfParse(buffer);
     return data.text;
-  } catch (error) {
-    throw new Error(`Failed to parse PDF: ${error}`);
+  } catch (error: any) {
+    throw new Error(`Failed to parse PDF: ${error.message}`);
   }
 }
 
 /**
- * Generate flashcards from PDF
+ * Teilt Text in sinnvolle Chunks für OpenAI
  */
-export async function generateCardsFromPDF(
-  pdfBuffer: Buffer,
-  options: { sourceLanguage?: string; targetLanguage?: string; maxCards?: number } = {}
-): Promise<Array<{ front: string; back: string; tags?: string }>> {
-  const text = await extractTextFromPDF(pdfBuffer);
+export function chunkText(text: string, maxChunkSize: number = 3000): string[] {
+  const chunks: string[] = [];
+  const sentences = text.split(/[.!?]\s+/);
   
-  if (!text || text.trim().length === 0) {
-    throw new Error("PDF contains no extractable text");
+  let currentChunk = "";
+  
+  for (const sentence of sentences) {
+    if ((currentChunk + sentence).length > maxChunkSize && currentChunk.length > 0) {
+      chunks.push(currentChunk.trim());
+      currentChunk = sentence;
+    } else {
+      currentChunk += (currentChunk ? ". " : "") + sentence;
+    }
   }
-
-  return generateCardsFromText(text, options);
+  
+  if (currentChunk.trim().length > 0) {
+    chunks.push(currentChunk.trim());
+  }
+  
+  return chunks;
 }
 

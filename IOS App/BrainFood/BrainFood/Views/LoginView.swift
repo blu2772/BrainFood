@@ -1,39 +1,48 @@
+//
+//  LoginView.swift
+//  BrainFood
+//
+//  Created on 22.11.25.
+//
+
 import SwiftUI
 
 struct LoginView: View {
-    @EnvironmentObject var authViewModel: AuthViewModel
+    @StateObject private var viewModel = AuthViewModel()
     @State private var email = ""
     @State private var password = ""
-    @State private var showRegister = false
+    @State private var showingRegister = false
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 20) {
                 Image(systemName: "brain.head.profile")
-                    .font(.system(size: 80))
+                    .font(.system(size: 60))
                     .foregroundColor(.blue)
-                    .padding(.top, 60)
                 
                 Text("BrainFood")
                     .font(.largeTitle)
                     .fontWeight(.bold)
-                    .padding(.bottom, 40)
                 
-                VStack(spacing: 16) {
+                Text("Lerne effizient mit FSRS-5")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                VStack(spacing: 15) {
                     TextField("E-Mail", text: $email)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .textFieldStyle(.roundedBorder)
                         .autocapitalization(.none)
                         .keyboardType(.emailAddress)
                     
                     SecureField("Passwort", text: $password)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .textFieldStyle(.roundedBorder)
                     
                     Button(action: {
                         Task {
-                            await authViewModel.login(email: email, password: password)
+                            await viewModel.login(email: email, password: password)
                         }
                     }) {
-                        if authViewModel.isLoading {
+                        if viewModel.isLoading {
                             ProgressView()
                                 .frame(maxWidth: .infinity)
                         } else {
@@ -42,24 +51,23 @@ struct LoginView: View {
                         }
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(authViewModel.isLoading || email.isEmpty || password.isEmpty)
+                    .disabled(viewModel.isLoading || email.isEmpty || password.isEmpty)
                     
-                    if let error = authViewModel.errorMessage {
-                        Text(error)
-                            .foregroundColor(.red)
-                            .font(.caption)
+                    Button("Noch kein Konto? Registrieren") {
+                        showingRegister = true
                     }
+                    .font(.footnote)
                 }
-                .padding(.horizontal, 32)
+                .padding()
                 
-                Button("Noch kein Konto? Registrieren") {
-                    showRegister = true
+                if let error = viewModel.errorMessage {
+                    Text(error)
+                        .foregroundColor(.red)
+                        .font(.caption)
                 }
-                .padding(.top)
-                
-                Spacer()
             }
-            .sheet(isPresented: $showRegister) {
+            .padding()
+            .sheet(isPresented: $showingRegister) {
                 RegisterView()
             }
         }
@@ -67,17 +75,17 @@ struct LoginView: View {
 }
 
 struct RegisterView: View {
-    @Environment(\.dismiss) var dismiss
-    @EnvironmentObject var authViewModel: AuthViewModel
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var viewModel = AuthViewModel()
     @State private var name = ""
     @State private var email = ""
     @State private var password = ""
     @State private var confirmPassword = ""
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
-                Section(header: Text("Registrierung")) {
+                Section("Registrierung") {
                     TextField("Name", text: $name)
                     TextField("E-Mail", text: $email)
                         .autocapitalization(.none)
@@ -89,27 +97,24 @@ struct RegisterView: View {
                 Section {
                     Button(action: {
                         Task {
-                            await authViewModel.register(name: name, email: email, password: password)
-                            if authViewModel.isAuthenticated {
+                            await viewModel.register(name: name, email: email, password: password)
+                            if viewModel.isAuthenticated {
                                 dismiss()
                             }
                         }
                     }) {
-                        if authViewModel.isLoading {
-                            HStack {
-                                Spacer()
-                                ProgressView()
-                                Spacer()
-                            }
+                        if viewModel.isLoading {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
                         } else {
                             Text("Registrieren")
                                 .frame(maxWidth: .infinity)
                         }
                     }
-                    .disabled(authViewModel.isLoading || name.isEmpty || email.isEmpty || password.isEmpty || password != confirmPassword)
+                    .disabled(viewModel.isLoading || name.isEmpty || email.isEmpty || password.isEmpty || password != confirmPassword)
                 }
                 
-                if let error = authViewModel.errorMessage {
+                if let error = viewModel.errorMessage {
                     Section {
                         Text(error)
                             .foregroundColor(.red)
@@ -128,5 +133,9 @@ struct RegisterView: View {
             }
         }
     }
+}
+
+#Preview {
+    LoginView()
 }
 

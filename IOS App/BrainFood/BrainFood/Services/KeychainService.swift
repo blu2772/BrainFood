@@ -1,3 +1,10 @@
+//
+//  KeychainService.swift
+//  BrainFood
+//
+//  Created on 22.11.25.
+//
+
 import Foundation
 import Security
 
@@ -5,90 +12,54 @@ class KeychainService {
     static let shared = KeychainService()
     
     private let tokenKey = "com.brainfood.auth.token"
-    private let userKey = "com.brainfood.auth.user"
+    private let service = "com.brainfood"
     
     private init() {}
     
     func saveToken(_ token: String) -> Bool {
-        return save(token, forKey: tokenKey)
-    }
-    
-    func getToken() -> String? {
-        return get(forKey: tokenKey)
-    }
-    
-    func deleteToken() -> Bool {
-        return delete(forKey: tokenKey)
-    }
-    
-    func saveUser(_ user: User) -> Bool {
-        if let data = try? JSONEncoder().encode(user) {
-            return save(data, forKey: userKey)
-        }
-        return false
-    }
-    
-    func getUser() -> User? {
-        guard let data = getData(forKey: userKey) else { return nil }
-        return try? JSONDecoder().decode(User.self, from: data)
-    }
-    
-    func deleteUser() -> Bool {
-        return delete(forKey: userKey)
-    }
-    
-    func clearAll() {
-        deleteToken()
-        deleteUser()
-    }
-    
-    // MARK: - Private Keychain Methods
-    
-    private func save(_ value: String, forKey key: String) -> Bool {
-        guard let data = value.data(using: .utf8) else { return false }
-        return save(data, forKey: key)
-    }
-    
-    private func save(_ data: Data, forKey key: String) -> Bool {
+        guard let data = token.data(using: .utf8) else { return false }
+        
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: tokenKey,
             kSecValueData as String: data
         ]
         
-        // Delete existing item first
+        // Lösche vorheriges Token falls vorhanden
         SecItemDelete(query as CFDictionary)
         
-        // Add new item
+        // Speichere neues Token
         let status = SecItemAdd(query as CFDictionary, nil)
         return status == errSecSuccess
     }
     
-    private func get(forKey key: String) -> String? {
-        guard let data = getData(forKey: key) else { return nil }
-        return String(data: data, encoding: .utf8)
-    }
-    
-    private func getData(forKey key: String) -> Data? {
+    func getToken() -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key,
-            kSecReturnData as String: true
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: tokenKey,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
         ]
         
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         
-        if status == errSecSuccess {
-            return result as? Data
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let token = String(data: data, encoding: .utf8) else {
+            return nil
         }
-        return nil
+        
+        return token
     }
     
-    private func delete(forKey key: String) -> Bool {
+    func deleteToken() -> Bool {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: tokenKey
         ]
         
         let status = SecItemDelete(query as CFDictionary)

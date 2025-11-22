@@ -1,164 +1,194 @@
 import { CardState, FSRSResult, ReviewRating, FSRS_PARAMS } from "./types";
 
 /**
- * FSRS-5 Algorithm Implementation
+ * FSRS-5 Algorithmus Implementation
  * 
- * This implementation follows the Free Spaced Repetition Scheduler v5 algorithm
- * which optimizes review scheduling for a target retention rate (default: 90%).
+ * Basierend auf dem Free Spaced Repetition Scheduler Algorithmus
+ * für optimale Wiederholungsplanung von Lernkarten.
  */
 
 /**
- * Calculate the next review state based on the current card state and user rating
+ * Berechnet die neue Stabilität basierend auf Rating und aktuellem State
+ */
+function calculateNewStability(
+  currentStability: number,
+  difficulty: number,
+  rating: ReviewRating
+): number {
+  const easyBonus = 1.3;
+  
+  let stabilityIncrease: number;
+  
+  switch (rating) {
+    case "again":
+      // Bei "Again" wird die Stabilität stark reduziert
+      return Math.max(0.1, currentStability * FSRS_PARAMS.STABILITY_INCREASE_AGAIN);
+    
+    case "hard":
+      // Bei "Hard" wächst die Stabilität wenig
+      stabilityIncrease = FSRS_PARAMS.STABILITY_INCREASE_HARD;
+      return currentStability * (1 + Math.exp(-8 + 0.12 * difficulty)) * stabilityIncrease;
+    
+    case "good":
+      // Standard-Wachstum
+      stabilityIncrease = FSRS_PARAMS.STABILITY_INCREASE_GOOD;
+      return currentStability * (1 + Math.exp(-8 + 0.12 * difficulty)) * stabilityIncrease;
+    
+    case "easy":
+      // Größeres Intervall, stärkeres Wachstum
+      stabilityIncrease = FSRS_PARAMS.STABILITY_INCREASE_EASY;
+      return currentStability * (1 + Math.exp(-8 + 0.12 * difficulty)) * stabilityIncrease * easyBonus;
+    
+    default:
+      return currentStability;
+  }
+}
+
+/**
+ * Berechnet die neue Schwierigkeit basierend auf Rating
+ */
+function calculateNewDifficulty(
+  currentDifficulty: number,
+  rating: ReviewRating
+): number {
+  let difficultyChange: number;
+  
+  switch (rating) {
+    case "again":
+      difficultyChange = -0.2;
+      break;
+    case "hard":
+      difficultyChange = -0.15;
+      break;
+    case "good":
+      difficultyChange = 0;
+      break;
+    case "easy":
+      difficultyChange = 0.15;
+      break;
+    default:
+      difficultyChange = 0;
+  }
+  
+  const newDifficulty = currentDifficulty + difficultyChange;
+  
+  // Schwierigkeit auf Bereich [0, 1] begrenzen
+  return Math.max(0, Math.min(1, newDifficulty));
+}
+
+/**
+ * Berechnet das neue Intervall basierend auf Stabilität und Rating
+ */
+function calculateInterval(
+  stability: number,
+  rating: ReviewRating
+): number {
+  // Basis-Intervall basierend auf Stabilität
+  let interval = stability;
+  
+  // Anpassung basierend auf Rating
+  switch (rating) {
+    case "again":
+      // Sehr kurzes Intervall (1 Tag)
+      interval = 1;
+      break;
+    case "hard":
+      // Kürzeres Intervall (75% der Stabilität)
+      interval = stability * 0.75;
+      break;
+    case "good":
+      // Standard-Intervall (100% der Stabilität)
+      interval = stability;
+      break;
+    case "easy":
+      // Längeres Intervall (130% der Stabilität)
+      interval = stability * 1.3;
+      break;
+  }
+  
+  // Intervall auf Maximum begrenzen
+  interval = Math.min(interval, FSRS_PARAMS.MAXIMUM_INTERVAL);
+  
+  // Auf ganze Tage runden
+  return Math.max(1, Math.round(interval));
+}
+
+/**
+ * Hauptfunktion: Plant die nächste Wiederholung basierend auf FSRS-5
+ * 
+ * @param cardState Aktueller Zustand der Karte
+ * @param rating Bewertung durch den Benutzer (again/hard/good/easy)
+ * @param now Aktuelles Datum/Zeit
+ * @returns Neuer Zustand und nächstes Fälligkeitsdatum
  */
 export function scheduleNextReview(
   cardState: CardState,
   rating: ReviewRating,
   now: Date = new Date()
 ): FSRSResult {
-  const { stability, difficulty, reps, lapses } = cardState;
+  // Neue Stabilität berechnen
+  const newStability = calculateNewStability(
+    cardState.stability,
+    cardState.difficulty,
+    rating
+  );
   
-  // Convert rating to numeric value (1-4)
-  const ratingValue = ratingToNumber(rating);
+  // Neue Schwierigkeit berechnen
+  const newDifficulty = calculateNewDifficulty(cardState.difficulty, rating);
   
-  // Calculate new difficulty
-  const newDifficulty = calculateDifficulty(difficulty, ratingValue);
-  
-  // Calculate new stability based on rating
-  let newStability: number;
-  let newReps = reps;
-  let newLapses = lapses;
+  // Neue Reps und Lapses aktualisieren
+  let newReps = cardState.reps;
+  let newLapses = cardState.lapses;
   
   if (rating === "again") {
-    // Card was forgotten - reset stability and increment lapses
-    newStability = calculateAgainStability(stability, difficulty);
-    newLapses = lapses + 1;
-    newReps = 0;
+    newLapses += 1;
+    newReps = 0; // Reset bei Fehler
   } else {
-    // Card was remembered - increase stability
-    newStability = calculateStability(stability, difficulty, ratingValue, reps);
-    newReps = reps + 1;
+    newReps += 1;
   }
   
-  // Calculate interval based on new stability and requested retention
-  const interval = calculateInterval(newStability, FSRS_PARAMS.requestRetention);
+  // Neues Intervall berechnen
+  const interval = calculateInterval(newStability, rating);
   
-  // Calculate next due date
-  const newDue = new Date(now.getTime() + interval * 24 * 60 * 60 * 1000);
+  // Nächstes Fälligkeitsdatum berechnen
+  const nextDue = new Date(now);
+  nextDue.setDate(nextDue.getDate() + interval);
+  
+  // Neuen State erstellen
+  const newState: CardState = {
+    stability: newStability,
+    difficulty: newDifficulty,
+    reps: newReps,
+    lapses: newLapses,
+    lastReviewAt: now,
+    due: nextDue,
+  };
   
   return {
-    newState: {
-      stability: newStability,
-      difficulty: newDifficulty,
-      reps: newReps,
-      lapses: newLapses,
-      lastReviewAt: now,
-      due: newDue,
-    },
-    interval: Math.round(interval),
+    newState,
+    interval,
+    nextDue,
   };
 }
 
 /**
- * Convert rating string to numeric value
- */
-function ratingToNumber(rating: ReviewRating): number {
-  switch (rating) {
-    case "again": return 1;
-    case "hard": return 2;
-    case "good": return 3;
-    case "easy": return 4;
-  }
-}
-
-/**
- * Calculate new difficulty based on current difficulty and rating
- */
-function calculateDifficulty(currentDifficulty: number, rating: number): number {
-  // Difficulty adjustment based on rating
-  // Hard ratings increase difficulty, Easy ratings decrease it
-  let change = 0;
-  
-  if (rating === 1) { // again
-    change = -0.15;
-  } else if (rating === 2) { // hard
-    change = 0.1;
-  } else if (rating === 3) { // good
-    change = 0;
-  } else if (rating === 4) { // easy
-    change = -0.1;
-  }
-  
-  const newDifficulty = currentDifficulty + change;
-  
-  // Clamp difficulty between 0 and 1
-  return Math.max(0, Math.min(1, newDifficulty));
-}
-
-/**
- * Calculate stability when card is rated "again" (forgotten)
- */
-function calculateAgainStability(stability: number, difficulty: number): number {
-  // When forgotten, stability drops significantly
-  // Formula based on FSRS-5 algorithm
-  const factor = 0.15 + (difficulty * 0.1);
-  return stability * factor;
-}
-
-/**
- * Calculate new stability when card is remembered
- */
-function calculateStability(
-  currentStability: number,
-  difficulty: number,
-  rating: number,
-  reps: number
-): number {
-  // Base multiplier based on rating
-  let multiplier = 1;
-  
-  if (rating === 2) { // hard
-    multiplier = 1.2;
-  } else if (rating === 3) { // good
-    multiplier = 2.5;
-  } else if (rating === 4) { // easy
-    multiplier = 4.0;
-  }
-  
-  // Adjust for difficulty (harder cards grow slower)
-  const difficultyFactor = 1 - (difficulty * 0.2);
-  
-  // Adjust for number of reviews (more reviews = slower growth)
-  const repsFactor = 1 + (reps * 0.05);
-  
-  return currentStability * multiplier * difficultyFactor * (1 / repsFactor);
-}
-
-/**
- * Calculate review interval in days based on stability and requested retention
- */
-function calculateInterval(stability: number, requestRetention: number): number {
-  // Calculate interval using exponential function
-  // Higher stability = longer intervals
-  // Higher retention target = shorter intervals
-  
-  const retentionFactor = Math.log(requestRetention) / Math.log(0.9);
-  const interval = stability * retentionFactor;
-  
-  // Clamp interval between 1 day and maximum interval
-  return Math.max(1, Math.min(interval, FSRS_PARAMS.maximumInterval));
-}
-
-/**
- * Initialize a new card with default FSRS-5 state
+ * Initialisiert einen neuen Card-State für eine neue Karte
  */
 export function initializeCardState(): CardState {
   return {
-    stability: FSRS_PARAMS.initialStability,
-    difficulty: FSRS_PARAMS.initialDifficulty,
+    stability: 0.4,      // Initiale Stabilität (ca. 1 Tag)
+    difficulty: 0.3,    // Mittlere Schwierigkeit
     reps: 0,
     lapses: 0,
     lastReviewAt: null,
-    due: new Date(), // Due immediately for first review
+    due: new Date(),    // Sofort fällig für erste Wiederholung
   };
+}
+
+/**
+ * Prüft, ob eine Karte fällig ist
+ */
+export function isCardDue(cardState: CardState, now: Date = new Date()): boolean {
+  return cardState.due <= now;
 }
 

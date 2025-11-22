@@ -1,39 +1,51 @@
+//
+//  BoxSettingsView.swift
+//  BrainFood
+//
+//  Created on 22.11.25.
+//
+
 import SwiftUI
 
 struct BoxSettingsView: View {
     let box: Box
-    @EnvironmentObject var authViewModel: AuthViewModel
-    @State private var showLogoutAlert = false
+    @StateObject private var authViewModel = AuthViewModel()
     
     var body: some View {
-        List {
-            Section(header: Text("Box")) {
+        Form {
+            Section("Box") {
                 Text("Name: \(box.name)")
-                if let count = box.cardCount {
-                    Text("Karten: \(count)")
-                }
+                Text("Erstellt: \(formatDate(box.createdAt))")
             }
             
-            Section(header: Text("Konto")) {
-                if let user = authViewModel.currentUser {
-                    Text("Benutzer: \(user.name)")
-                    Text("E-Mail: \(user.email)")
-                }
-                
+            Section("Konto") {
                 Button("Abmelden", role: .destructive) {
-                    showLogoutAlert = true
+                    authViewModel.logout()
                 }
             }
         }
         .navigationTitle("Einstellungen")
-        .alert("Abmelden", isPresented: $showLogoutAlert) {
-            Button("Abbrechen", role: .cancel) {}
-            Button("Abmelden", role: .destructive) {
-                authViewModel.logout()
-            }
-        } message: {
-            Text("Möchten Sie sich wirklich abmelden?")
+    }
+    
+    private func formatDate(_ dateString: String) -> String {
+        let formatter = ISO8601DateFormatter()
+        if let date = formatter.date(from: dateString) {
+            let displayFormatter = DateFormatter()
+            displayFormatter.dateStyle = .medium
+            return displayFormatter.string(from: date)
         }
+        return dateString
+    }
+}
+
+#Preview {
+    NavigationStack {
+        BoxSettingsView(box: Box(
+            id: "1",
+            userId: "1",
+            name: "Beispiel Box",
+            createdAt: "2024-01-01T00:00:00Z"
+        ))
     }
 }
 

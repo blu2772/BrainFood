@@ -1,312 +1,337 @@
+//
+//  APIClient.swift
+//  BrainFood
+//
+//  Created on 22.11.25.
+//
+
 import Foundation
 
 class APIClient {
     static let shared = APIClient()
     
-    private let baseURL: String
-    private let session: URLSession
+    // TODO: Anpassen an deine Backend-URL
+    private let baseURL = "http://localhost:3000/api"
     
-    private init() {
-        // TODO: Update this to your backend URL
-        self.baseURL = "http://localhost:3000/api"
-        self.session = URLSession.shared
+    private init() {}
+    
+    // MARK: - Helper Methods
+    
+    private func getAuthToken() -> String? {
+        return KeychainService.shared.getToken()
     }
     
-    // MARK: - Authentication
-    
-    func register(name: String, email: String, password: String) async throws -> AuthResponse {
-        let url = URL(string: "\(baseURL)/auth/register")!
+    private func createRequest(
+        endpoint: String,
+        method: String,
+        body: Data? = nil,
+        requiresAuth: Bool = true
+    ) -> URLRequest? {
+        guard let url = URL(string: "\(baseURL)\(endpoint)") else {
+            return nil
+        }
+        
         var request = URLRequest(url: url)
-        request.httpMethod = "POST"
+        request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        let body = ["name": name, "email": email, "password": password]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        if requiresAuth, let token = getAuthToken() {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response)
-        return try JSONDecoder.brainFoodDecoder.decode(AuthResponse.self, from: data)
+        if let body = body {
+            request.httpBody = body
+        }
+        
+        return request
+    }
+    
+    private func performRequest<T: Decodable>(
+        _ request: URLRequest,
+        responseType: T.Type
+    ) async throws -> T {
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            if let errorData = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
+                throw APIError.serverError(errorData.error)
+            }
+            throw APIError.httpError(httpResponse.statusCode)
+        }
+        
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(T.self, from: data)
+    }
+    
+    // MARK: - Auth Endpoints
+    
+    func register(name: String, email: String, password: String) async throws -> AuthResponse {
+        let body = ["name": name, "email": email, "password": password]
+        let bodyData = try JSONSerialization.data(withJSONObject: body)
+        
+        guard let request = createRequest(
+            endpoint: "/auth/register",
+            method: "POST",
+            body: bodyData,
+            requiresAuth: false
+        ) else {
+            throw APIError.invalidRequest
+        }
+        
+        return try await performRequest(request, responseType: AuthResponse.self)
     }
     
     func login(email: String, password: String) async throws -> AuthResponse {
-        let url = URL(string: "\(baseURL)/auth/login")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
         let body = ["email": email, "password": password]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let bodyData = try JSONSerialization.data(withJSONObject: body)
         
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response)
-        return try JSONDecoder.brainFoodDecoder.decode(AuthResponse.self, from: data)
+        guard let request = createRequest(
+            endpoint: "/auth/login",
+            method: "POST",
+            body: bodyData,
+            requiresAuth: false
+        ) else {
+            throw APIError.invalidRequest
+        }
+        
+        return try await performRequest(request, responseType: AuthResponse.self)
     }
     
     func getCurrentUser() async throws -> User {
-        let url = URL(string: "\(baseURL)/auth/me")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        try addAuthHeader(to: &request)
+        guard let request = createRequest(
+            endpoint: "/auth/me",
+            method: "GET"
+        ) else {
+            throw APIError.invalidRequest
+        }
         
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response)
-        let responseObj = try JSONDecoder.brainFoodDecoder.decode([String: User].self, from: data)
-        return responseObj["user"]!
+        let response = try await performRequest(request, responseType: UserResponse.self)
+        return response.user
     }
     
-    // MARK: - Boxes
+    // MARK: - Box Endpoints
     
     func getBoxes() async throws -> [Box] {
-        let url = URL(string: "\(baseURL)/boxes")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        try addAuthHeader(to: &request)
+        guard let request = createRequest(
+            endpoint: "/boxes",
+            method: "GET"
+        ) else {
+            throw APIError.invalidRequest
+        }
         
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response)
-        let responseObj = try JSONDecoder.brainFoodDecoder.decode(BoxesResponse.self, from: data)
-        return responseObj.boxes
+        let response = try await performRequest(request, responseType: BoxesResponse.self)
+        return response.boxes
     }
     
     func createBox(name: String) async throws -> Box {
-        let url = URL(string: "\(baseURL)/boxes")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        try addAuthHeader(to: &request)
-        
         let body = ["name": name]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let bodyData = try JSONSerialization.data(withJSONObject: body)
         
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response)
-        let responseObj = try JSONDecoder.brainFoodDecoder.decode([String: Box].self, from: data)
-        return responseObj["box"]!
+        guard let request = createRequest(
+            endpoint: "/boxes",
+            method: "POST",
+            body: bodyData
+        ) else {
+            throw APIError.invalidRequest
+        }
+        
+        let response = try await performRequest(request, responseType: BoxResponse.self)
+        return response.box
     }
     
     func updateBox(boxId: String, name: String) async throws -> Box {
-        let url = URL(string: "\(baseURL)/boxes/\(boxId)")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "PUT"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        try addAuthHeader(to: &request)
-        
         let body = ["name": name]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let bodyData = try JSONSerialization.data(withJSONObject: body)
         
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response)
-        let responseObj = try JSONDecoder.brainFoodDecoder.decode([String: Box].self, from: data)
-        return responseObj["box"]!
+        guard let request = createRequest(
+            endpoint: "/boxes/\(boxId)",
+            method: "PUT",
+            body: bodyData
+        ) else {
+            throw APIError.invalidRequest
+        }
+        
+        let response = try await performRequest(request, responseType: BoxResponse.self)
+        return response.box
     }
     
     func deleteBox(boxId: String) async throws {
-        let url = URL(string: "\(baseURL)/boxes/\(boxId)")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "DELETE"
-        try addAuthHeader(to: &request)
+        guard let request = createRequest(
+            endpoint: "/boxes/\(boxId)",
+            method: "DELETE"
+        ) else {
+            throw APIError.invalidRequest
+        }
         
-        let (_, response) = try await session.data(for: request)
-        try validateResponse(response)
+        _ = try await URLSession.shared.data(for: request)
     }
     
-    // MARK: - Cards
+    // MARK: - Card Endpoints
     
     func getCards(boxId: String, search: String? = nil, sort: String? = nil) async throws -> [Card] {
-        var components = URLComponents(string: "\(baseURL)/boxes/\(boxId)/cards")!
+        var endpoint = "/boxes/\(boxId)/cards"
         var queryItems: [URLQueryItem] = []
+        
         if let search = search {
             queryItems.append(URLQueryItem(name: "search", value: search))
         }
         if let sort = sort {
             queryItems.append(URLQueryItem(name: "sort", value: sort))
         }
-        components.queryItems = queryItems.isEmpty ? nil : queryItems
         
-        var request = URLRequest(url: components.url!)
-        request.httpMethod = "GET"
-        try addAuthHeader(to: &request)
+        if !queryItems.isEmpty {
+            var components = URLComponents(string: "\(baseURL)\(endpoint)")
+            components?.queryItems = queryItems
+            endpoint = components?.url?.path ?? endpoint
+        }
         
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response)
-        let responseObj = try JSONDecoder.brainFoodDecoder.decode(CardsResponse.self, from: data)
-        return responseObj.cards
+        guard let request = createRequest(
+            endpoint: endpoint,
+            method: "GET"
+        ) else {
+            throw APIError.invalidRequest
+        }
+        
+        let response = try await performRequest(request, responseType: CardsResponse.self)
+        return response.cards
     }
     
     func createCard(boxId: String, front: String, back: String, tags: String?) async throws -> Card {
-        let url = URL(string: "\(baseURL)/boxes/\(boxId)/cards")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        try addAuthHeader(to: &request)
-        
         var body: [String: Any] = ["front": front, "back": back]
         if let tags = tags {
             body["tags"] = tags
         }
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let bodyData = try JSONSerialization.data(withJSONObject: body)
         
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response)
-        let responseObj = try JSONDecoder.brainFoodDecoder.decode([String: Card].self, from: data)
-        return responseObj["card"]!
+        guard let request = createRequest(
+            endpoint: "/boxes/\(boxId)/cards",
+            method: "POST",
+            body: bodyData
+        ) else {
+            throw APIError.invalidRequest
+        }
+        
+        let response = try await performRequest(request, responseType: CardResponse.self)
+        return response.card
     }
     
     func updateCard(cardId: String, front: String?, back: String?, tags: String?) async throws -> Card {
-        let url = URL(string: "\(baseURL)/cards/\(cardId)")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "PUT"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        try addAuthHeader(to: &request)
-        
         var body: [String: Any] = [:]
         if let front = front { body["front"] = front }
         if let back = back { body["back"] = back }
         if let tags = tags { body["tags"] = tags }
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
         
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response)
-        let responseObj = try JSONDecoder.brainFoodDecoder.decode([String: Card].self, from: data)
-        return responseObj["card"]!
+        let bodyData = try JSONSerialization.data(withJSONObject: body)
+        
+        guard let request = createRequest(
+            endpoint: "/cards/\(cardId)",
+            method: "PUT",
+            body: bodyData
+        ) else {
+            throw APIError.invalidRequest
+        }
+        
+        let response = try await performRequest(request, responseType: CardResponse.self)
+        return response.card
     }
     
     func deleteCard(cardId: String) async throws {
-        let url = URL(string: "\(baseURL)/cards/\(cardId)")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "DELETE"
-        try addAuthHeader(to: &request)
+        guard let request = createRequest(
+            endpoint: "/cards/\(cardId)",
+            method: "DELETE"
+        ) else {
+            throw APIError.invalidRequest
+        }
         
-        let (_, response) = try await session.data(for: request)
-        try validateResponse(response)
+        _ = try await URLSession.shared.data(for: request)
     }
     
-    // MARK: - Reviews
+    // MARK: - Review Endpoints
     
     func getNextReviews(boxId: String, limit: Int = 1) async throws -> [Card] {
-        let url = URL(string: "\(baseURL)/boxes/\(boxId)/reviews/next?limit=\(limit)")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        try addAuthHeader(to: &request)
-        
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response)
-        let responseObj = try JSONDecoder.brainFoodDecoder.decode(CardsResponse.self, from: data)
-        return responseObj.cards
-    }
-    
-    func submitReview(cardId: String, rating: ReviewRating) async throws -> ReviewResponse {
-        let url = URL(string: "\(baseURL)/cards/\(cardId)/review")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        try addAuthHeader(to: &request)
-        
-        let body = ["rating": rating.rawValue]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response)
-        return try JSONDecoder.brainFoodDecoder.decode(ReviewResponse.self, from: data)
-    }
-    
-    // MARK: - Stats
-    
-    func getBoxStats(boxId: String) async throws -> BoxStats {
-        let url = URL(string: "\(baseURL)/boxes/\(boxId)/stats")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        try addAuthHeader(to: &request)
-        
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response)
-        return try JSONDecoder.brainFoodDecoder.decode(BoxStats.self, from: data)
-    }
-    
-    // MARK: - Helpers
-    
-    private func addAuthHeader(to request: inout URLRequest) throws {
-        guard let token = KeychainService.shared.getToken() else {
-            throw APIError.unauthorized
-        }
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-    }
-    
-    private func validateResponse(_ response: URLResponse) throws {
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
+        guard let request = createRequest(
+            endpoint: "/boxes/\(boxId)/reviews/next?limit=\(limit)",
+            method: "GET"
+        ) else {
+            throw APIError.invalidRequest
         }
         
-        switch httpResponse.statusCode {
-        case 200...299:
-            return
-        case 401:
-            throw APIError.unauthorized
-        case 404:
-            throw APIError.notFound
-        case 400...499:
-            throw APIError.clientError(httpResponse.statusCode)
-        case 500...599:
-            throw APIError.serverError(httpResponse.statusCode)
-        default:
-            throw APIError.unknown
+        let response = try await performRequest(request, responseType: NextReviewsResponse.self)
+        return response.cards
+    }
+    
+    func reviewCard(cardId: String, rating: String) async throws -> ReviewResponse {
+        let body = ["rating": rating]
+        let bodyData = try JSONSerialization.data(withJSONObject: body)
+        
+        guard let request = createRequest(
+            endpoint: "/cards/\(cardId)/review",
+            method: "POST",
+            body: bodyData
+        ) else {
+            throw APIError.invalidRequest
         }
+        
+        return try await performRequest(request, responseType: ReviewResponse.self)
+    }
+    
+    // MARK: - Stats Endpoints
+    
+    func getStats(boxId: String) async throws -> BoxStats {
+        guard let request = createRequest(
+            endpoint: "/boxes/\(boxId)/stats",
+            method: "GET"
+        ) else {
+            throw APIError.invalidRequest
+        }
+        
+        let response = try await performRequest(request, responseType: StatsResponse.self)
+        return response.stats
     }
 }
 
+// MARK: - Error Types
+
 enum APIError: Error, LocalizedError {
-    case unauthorized
-    case notFound
-    case clientError(Int)
-    case serverError(Int)
+    case invalidRequest
     case invalidResponse
-    case unknown
+    case httpError(Int)
+    case serverError(String)
     
     var errorDescription: String? {
         switch self {
-        case .unauthorized:
-            return "Nicht autorisiert. Bitte melden Sie sich erneut an."
-        case .notFound:
-            return "Ressource nicht gefunden."
-        case .clientError(let code):
-            return "Client-Fehler (\(code))"
-        case .serverError(let code):
-            return "Server-Fehler (\(code))"
+        case .invalidRequest:
+            return "Ungültige Anfrage"
         case .invalidResponse:
-            return "Ungültige Server-Antwort."
-        case .unknown:
-            return "Ein unbekannter Fehler ist aufgetreten."
+            return "Ungültige Antwort vom Server"
+        case .httpError(let code):
+            return "HTTP Fehler: \(code)"
+        case .serverError(let message):
+            return message
         }
     }
 }
 
-// MARK: - Date Decoding
+// MARK: - Response Types
 
-extension JSONDecoder {
-    static let brainFoodDecoder: JSONDecoder = {
-        let decoder = JSONDecoder()
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        decoder.dateDecodingStrategy = .custom { decoder in
-            let container = try decoder.singleValueContainer()
-            let dateString = try container.decode(String.self)
-            
-            if let date = formatter.date(from: dateString) {
-                return date
-            }
-            
-            // Fallback to standard ISO8601
-            formatter.formatOptions = [.withInternetDateTime]
-            if let date = formatter.date(from: dateString) {
-                return date
-            }
-            
-            throw DecodingError.dataCorruptedError(
-                in: container,
-                debugDescription: "Invalid date format: \(dateString)"
-            )
-        }
-        return decoder
-    }()
+struct ErrorResponse: Codable {
+    let error: String
+}
+
+struct UserResponse: Codable {
+    let user: User
+}
+
+struct BoxResponse: Codable {
+    let box: Box
+}
+
+struct CardResponse: Codable {
+    let card: Card
 }
 

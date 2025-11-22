@@ -1,6 +1,15 @@
+//
+//  BoxesViewModel.swift
+//  BrainFood
+//
+//  Created on 22.11.25.
+//
+
 import Foundation
 import SwiftUI
+import Combine
 
+@MainActor
 class BoxesViewModel: ObservableObject {
     @Published var boxes: [Box] = []
     @Published var isLoading = false
@@ -8,37 +17,40 @@ class BoxesViewModel: ObservableObject {
     
     private let apiClient = APIClient.shared
     
-    @MainActor
     func loadBoxes() async {
         isLoading = true
         errorMessage = nil
         
         do {
             boxes = try await apiClient.getBoxes()
+        } catch let error as APIError {
+            errorMessage = error.errorDescription
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Fehler beim Laden der Boxen"
         }
         
         isLoading = false
     }
     
-    @MainActor
     func createBox(name: String) async {
         do {
             let newBox = try await apiClient.createBox(name: name)
             boxes.append(newBox)
+        } catch let error as APIError {
+            errorMessage = error.errorDescription
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Fehler beim Erstellen der Box"
         }
     }
     
-    @MainActor
     func deleteBox(_ box: Box) async {
         do {
             try await apiClient.deleteBox(boxId: box.id)
             boxes.removeAll { $0.id == box.id }
+        } catch let error as APIError {
+            errorMessage = error.errorDescription
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Fehler beim Löschen der Box"
         }
     }
 }

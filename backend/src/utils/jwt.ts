@@ -1,25 +1,41 @@
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret";
+const JWT_SECRET = process.env.JWT_SECRET || "default-secret-change-in-production";
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "12h";
 
+export interface JWTPayload {
+  userId: string;
+  email: string;
+}
+
 /**
- * Generate a JWT token for a user
+ * Erstellt ein JWT-Token für einen Benutzer
  */
-export function generateToken(userId: string): string {
-  return jwt.sign({ userId }, JWT_SECRET, {
+export function generateToken(payload: JWTPayload): string {
+  return jwt.sign(payload, JWT_SECRET, {
     expiresIn: JWT_EXPIRES_IN,
   });
 }
 
 /**
- * Verify and decode a JWT token
+ * Verifiziert und dekodiert ein JWT-Token
  */
-export function verifyToken(token: string): { userId: string } | null {
+export function verifyToken(token: string): JWTPayload {
   try {
-    return jwt.verify(token, JWT_SECRET) as { userId: string };
-  } catch {
+    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
+    return decoded;
+  } catch (error) {
+    throw new Error("Invalid or expired token");
+  }
+}
+
+/**
+ * Extrahiert das Token aus dem Authorization-Header
+ */
+export function extractTokenFromHeader(authHeader: string | undefined): string | null {
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return null;
   }
+  return authHeader.substring(7);
 }
 

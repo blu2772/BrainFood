@@ -1,3 +1,10 @@
+//
+//  Card.swift
+//  BrainFood
+//
+//  Created on 22.11.25.
+//
+
 import Foundation
 
 struct Card: Codable, Identifiable {
@@ -6,55 +13,32 @@ struct Card: Codable, Identifiable {
     let front: String
     let back: String
     let tags: String?
-    let createdAt: Date
-    let updatedAt: Date
     let stability: Double
     let difficulty: Double
     let reps: Int
     let lapses: Int
-    let lastReviewAt: Date?
-    let due: Date
-    
-    var tagsArray: [String] {
-        tags?.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) } ?? []
-    }
+    let lastReviewAt: String?
+    let due: String
+    let createdAt: String
+    let updatedAt: String
 }
 
 struct CardsResponse: Codable {
     let cards: [Card]
 }
 
-enum ReviewRating: String, Codable, CaseIterable {
-    case again = "again"
-    case hard = "hard"
-    case good = "good"
-    case easy = "easy"
-    
-    var displayName: String {
-        switch self {
-        case .again: return "Wiederholen"
-        case .hard: return "Schwer"
-        case .good: return "Gut"
-        case .easy: return "Einfach"
-        }
-    }
-    
-    var color: String {
-        switch self {
-        case .again: return "red"
-        case .hard: return "orange"
-        case .good: return "green"
-        case .easy: return "blue"
-        }
-    }
-}
-
-struct ReviewRequest: Codable {
-    let rating: String
+struct ReviewRating: Codable {
+    let rating: String // "again", "hard", "good", "easy"
 }
 
 struct ReviewResponse: Codable {
     let card: Card
-    let nextDue: Date
+    let nextDue: String
     let interval: Int
 }
+
+struct NextReviewsResponse: Codable {
+    let cards: [Card]
+    let count: Int
+}
+

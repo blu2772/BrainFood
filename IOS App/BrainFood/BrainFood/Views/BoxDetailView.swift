@@ -1,3 +1,10 @@
+//
+//  BoxDetailView.swift
+//  BrainFood
+//
+//  Created on 22.11.25.
+//
+
 import SwiftUI
 
 struct BoxDetailView: View {
@@ -14,7 +21,7 @@ struct BoxDetailView: View {
             
             CardsView(boxId: box.id)
                 .tabItem {
-                    Label("Karten", systemImage: "square.stack")
+                    Label("Karten", systemImage: "rectangle.stack")
                 }
                 .tag(1)
             
@@ -26,6 +33,17 @@ struct BoxDetailView: View {
         }
         .navigationTitle(box.name)
         .navigationBarTitleDisplayMode(.large)
+    }
+}
+
+#Preview {
+    NavigationStack {
+        BoxDetailView(box: Box(
+            id: "1",
+            userId: "1",
+            name: "Beispiel Box",
+            createdAt: "2024-01-01T00:00:00Z"
+        ))
     }
 }
 

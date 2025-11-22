@@ -1,41 +1,41 @@
-import express from "express";
+import { Router, Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import { hashPassword, verifyPassword } from "../utils/password";
 import { generateToken } from "../utils/jwt";
-import { authenticateToken, AuthRequest } from "../middleware/auth";
+import { authenticateToken } from "../middleware/auth";
 
-const router = express.Router();
+const router = Router();
 const prisma = new PrismaClient();
 
 /**
  * POST /api/auth/register
- * Register a new user
+ * Registriert einen neuen Benutzer
  */
-router.post("/register", async (req, res) => {
+router.post("/register", async (req: Request, res: Response) => {
   try {
     const { name, email, password } = req.body;
 
     if (!name || !email || !password) {
-      return res.status(400).json({ error: "Name, email, and password are required" });
+      return res.status(400).json({ error: "Name, email and password are required" });
     }
 
     if (password.length < 6) {
       return res.status(400).json({ error: "Password must be at least 6 characters" });
     }
 
-    // Check if user already exists
+    // Prüfe, ob E-Mail bereits existiert
     const existingUser = await prisma.user.findUnique({
       where: { email },
     });
 
     if (existingUser) {
-      return res.status(409).json({ error: "User with this email already exists" });
+      return res.status(409).json({ error: "Email already registered" });
     }
 
-    // Hash password
+    // Passwort hashen
     const passwordHash = await hashPassword(password);
 
-    // Create user
+    // Benutzer erstellen
     const user = await prisma.user.create({
       data: {
         name,
@@ -50,14 +50,17 @@ router.post("/register", async (req, res) => {
       },
     });
 
-    // Generate token
-    const token = generateToken(user.id);
+    // JWT-Token generieren
+    const token = generateToken({
+      userId: user.id,
+      email: user.email,
+    });
 
     res.status(201).json({
       user,
       token,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Registration error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
@@ -65,9 +68,9 @@ router.post("/register", async (req, res) => {
 
 /**
  * POST /api/auth/login
- * Login user
+ * Meldet einen Benutzer an
  */
-router.post("/login", async (req, res) => {
+router.post("/login", async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
 
@@ -75,7 +78,7 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ error: "Email and password are required" });
     }
 
-    // Find user
+    // Benutzer finden
     const user = await prisma.user.findUnique({
       where: { email },
     });
@@ -84,14 +87,18 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    // Verify password
-    const isValid = await verifyPassword(password, user.passwordHash);
+    // Passwort verifizieren
+    const isValid = await verifyPassword(user.passwordHash, password);
+
     if (!isValid) {
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    // Generate token
-    const token = generateToken(user.id);
+    // JWT-Token generieren
+    const token = generateToken({
+      userId: user.id,
+      email: user.email,
+    });
 
     res.json({
       user: {
@@ -102,7 +109,7 @@ router.post("/login", async (req, res) => {
       },
       token,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Login error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
@@ -110,12 +117,14 @@ router.post("/login", async (req, res) => {
 
 /**
  * GET /api/auth/me
- * Get current user info
+ * Liefert Informationen zum aktuellen Benutzer
  */
-router.get("/me", authenticateToken, async (req: AuthRequest, res) => {
+router.get("/me", authenticateToken, async (req: Request, res: Response) => {
   try {
+    const userId = (req as any).userId;
+
     const user = await prisma.user.findUnique({
-      where: { id: req.userId! },
+      where: { id: userId },
       select: {
         id: true,
         name: true,
@@ -129,7 +138,7 @@ router.get("/me", authenticateToken, async (req: AuthRequest, res) => {
     }
 
     res.json({ user });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Get user error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
@@ -137,11 +146,11 @@ router.get("/me", authenticateToken, async (req: AuthRequest, res) => {
 
 /**
  * POST /api/auth/logout
- * Logout (client-side token removal, server-side is stateless)
+ * Logout (optional, da JWT stateless ist)
  */
-router.post("/logout", authenticateToken, (req, res) => {
-  // JWT is stateless, so logout is handled client-side
-  // In production, you might want to implement token blacklisting
+router.post("/logout", authenticateToken, async (req: Request, res: Response) => {
+  // Da JWT stateless ist, gibt es hier nichts zu tun
+  // In einer produktiven App könnte man hier eine Token-Blacklist implementieren
   res.json({ message: "Logged out successfully" });
 });
 

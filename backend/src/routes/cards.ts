@@ -1,25 +1,26 @@
-import express from "express";
+import { Router, Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
-import { authenticateToken, AuthRequest } from "../middleware/auth";
+import { authenticateToken } from "../middleware/auth";
 import { initializeCardState } from "../fsrs/fsrs";
 
-const router = express.Router();
+const router = Router();
 const prisma = new PrismaClient();
 
 /**
  * GET /api/boxes/:boxId/cards
- * Get all cards in a box
+ * Liefert alle Karten einer Box
  */
-router.get("/boxes/:boxId/cards", authenticateToken, async (req: AuthRequest, res) => {
+router.get("/boxes/:boxId/cards", authenticateToken, async (req: Request, res: Response) => {
   try {
+    const userId = (req as any).userId;
     const { boxId } = req.params;
     const { search, sort } = req.query;
 
-    // Verify box ownership
+    // Prüfe, ob Box existiert und dem Benutzer gehört
     const box = await prisma.box.findFirst({
       where: {
         id: boxId,
-        userId: req.userId!,
+        userId,
       },
     });
 
@@ -27,9 +28,8 @@ router.get("/boxes/:boxId/cards", authenticateToken, async (req: AuthRequest, re
       return res.status(404).json({ error: "Box not found" });
     }
 
-    // Build where clause
+    // Filter und Sortierung
     const where: any = { boxId };
-
     if (search && typeof search === "string") {
       where.OR = [
         { front: { contains: search, mode: "insensitive" } },
@@ -37,7 +37,6 @@ router.get("/boxes/:boxId/cards", authenticateToken, async (req: AuthRequest, re
       ];
     }
 
-    // Build orderBy
     const orderBy: any = {};
     if (sort === "due") {
       orderBy.due = "asc";
@@ -51,7 +50,7 @@ router.get("/boxes/:boxId/cards", authenticateToken, async (req: AuthRequest, re
     });
 
     res.json({ cards });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Get cards error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
@@ -59,10 +58,11 @@ router.get("/boxes/:boxId/cards", authenticateToken, async (req: AuthRequest, re
 
 /**
  * POST /api/boxes/:boxId/cards
- * Create a new card
+ * Erstellt eine neue Karte
  */
-router.post("/boxes/:boxId/cards", authenticateToken, async (req: AuthRequest, res) => {
+router.post("/boxes/:boxId/cards", authenticateToken, async (req: Request, res: Response) => {
   try {
+    const userId = (req as any).userId;
     const { boxId } = req.params;
     const { front, back, tags } = req.body;
 
@@ -70,11 +70,11 @@ router.post("/boxes/:boxId/cards", authenticateToken, async (req: AuthRequest, r
       return res.status(400).json({ error: "Front and back are required" });
     }
 
-    // Verify box ownership
+    // Prüfe, ob Box existiert und dem Benutzer gehört
     const box = await prisma.box.findFirst({
       where: {
         id: boxId,
-        userId: req.userId!,
+        userId,
       },
     });
 
@@ -82,7 +82,7 @@ router.post("/boxes/:boxId/cards", authenticateToken, async (req: AuthRequest, r
       return res.status(404).json({ error: "Box not found" });
     }
 
-    // Initialize FSRS state
+    // Initialisiere FSRS-State
     const initialState = initializeCardState();
 
     const card = await prisma.card.create({
@@ -100,7 +100,7 @@ router.post("/boxes/:boxId/cards", authenticateToken, async (req: AuthRequest, r
     });
 
     res.status(201).json({ card });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Create card error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
@@ -108,17 +108,18 @@ router.post("/boxes/:boxId/cards", authenticateToken, async (req: AuthRequest, r
 
 /**
  * GET /api/cards/:cardId
- * Get a single card
+ * Liefert Details einer Karte
  */
-router.get("/:cardId", authenticateToken, async (req: AuthRequest, res) => {
+router.get("/:cardId", authenticateToken, async (req: Request, res: Response) => {
   try {
+    const userId = (req as any).userId;
     const { cardId } = req.params;
 
     const card = await prisma.card.findFirst({
       where: {
         id: cardId,
         box: {
-          userId: req.userId!,
+          userId,
         },
       },
     });
@@ -128,7 +129,7 @@ router.get("/:cardId", authenticateToken, async (req: AuthRequest, res) => {
     }
 
     res.json({ card });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Get card error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
@@ -136,24 +137,25 @@ router.get("/:cardId", authenticateToken, async (req: AuthRequest, res) => {
 
 /**
  * PUT /api/cards/:cardId
- * Update a card
+ * Aktualisiert eine Karte
  */
-router.put("/:cardId", authenticateToken, async (req: AuthRequest, res) => {
+router.put("/:cardId", authenticateToken, async (req: Request, res: Response) => {
   try {
+    const userId = (req as any).userId;
     const { cardId } = req.params;
     const { front, back, tags } = req.body;
 
-    // Verify ownership
-    const existingCard = await prisma.card.findFirst({
+    // Prüfe, ob Karte existiert und dem Benutzer gehört
+    const card = await prisma.card.findFirst({
       where: {
         id: cardId,
         box: {
-          userId: req.userId!,
+          userId,
         },
       },
     });
 
-    if (!existingCard) {
+    if (!card) {
       return res.status(404).json({ error: "Card not found" });
     }
 
@@ -162,13 +164,13 @@ router.put("/:cardId", authenticateToken, async (req: AuthRequest, res) => {
     if (back !== undefined) updateData.back = back.trim();
     if (tags !== undefined) updateData.tags = tags ? tags.trim() : null;
 
-    const card = await prisma.card.update({
+    const updatedCard = await prisma.card.update({
       where: { id: cardId },
       data: updateData,
     });
 
-    res.json({ card });
-  } catch (error) {
+    res.json({ card: updatedCard });
+  } catch (error: any) {
     console.error("Update card error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
@@ -176,23 +178,24 @@ router.put("/:cardId", authenticateToken, async (req: AuthRequest, res) => {
 
 /**
  * DELETE /api/cards/:cardId
- * Delete a card
+ * Löscht eine Karte
  */
-router.delete("/:cardId", authenticateToken, async (req: AuthRequest, res) => {
+router.delete("/:cardId", authenticateToken, async (req: Request, res: Response) => {
   try {
+    const userId = (req as any).userId;
     const { cardId } = req.params;
 
-    // Verify ownership
-    const existingCard = await prisma.card.findFirst({
+    // Prüfe, ob Karte existiert und dem Benutzer gehört
+    const card = await prisma.card.findFirst({
       where: {
         id: cardId,
         box: {
-          userId: req.userId!,
+          userId,
         },
       },
     });
 
-    if (!existingCard) {
+    if (!card) {
       return res.status(404).json({ error: "Card not found" });
     }
 
@@ -201,7 +204,7 @@ router.delete("/:cardId", authenticateToken, async (req: AuthRequest, res) => {
     });
 
     res.json({ message: "Card deleted successfully" });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Delete card error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
