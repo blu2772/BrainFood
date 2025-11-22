@@ -1,7 +1,6 @@
 import Foundation
 import SwiftUI
 
-@MainActor
 class AuthViewModel: ObservableObject {
     @Published var isAuthenticated = false
     @Published var currentUser: User?
@@ -22,6 +21,7 @@ class AuthViewModel: ObservableObject {
         }
     }
     
+    @MainActor
     func register(name: String, email: String, password: String) async {
         isLoading = true
         errorMessage = nil
@@ -39,6 +39,7 @@ class AuthViewModel: ObservableObject {
         isLoading = false
     }
     
+    @MainActor
     func login(email: String, password: String) async {
         isLoading = true
         errorMessage = nil
@@ -56,6 +57,7 @@ class AuthViewModel: ObservableObject {
         isLoading = false
     }
     
+    @MainActor
     func logout() {
         keychain.clearAll()
         currentUser = nil

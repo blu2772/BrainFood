@@ -1,7 +1,6 @@
 import Foundation
 import SwiftUI
 
-@MainActor
 class CardsViewModel: ObservableObject {
     @Published var cards: [Card] = []
     @Published var isLoading = false
@@ -25,6 +24,7 @@ class CardsViewModel: ObservableObject {
         }
     }
     
+    @MainActor
     func loadCards() async {
         isLoading = true
         errorMessage = nil
@@ -38,6 +38,7 @@ class CardsViewModel: ObservableObject {
         isLoading = false
     }
     
+    @MainActor
     func createCard(front: String, back: String, tags: String?) async {
         do {
             let newCard = try await apiClient.createCard(boxId: boxId, front: front, back: back, tags: tags)
@@ -47,6 +48,7 @@ class CardsViewModel: ObservableObject {
         }
     }
     
+    @MainActor
     func updateCard(_ card: Card, front: String?, back: String?, tags: String?) async {
         do {
             let updatedCard = try await apiClient.updateCard(cardId: card.id, front: front, back: back, tags: tags)
@@ -58,6 +60,7 @@ class CardsViewModel: ObservableObject {
         }
     }
     
+    @MainActor
     func deleteCard(_ card: Card) async {
         do {
             try await apiClient.deleteCard(cardId: card.id)

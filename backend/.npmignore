@@ -1,0 +1,12 @@
+src/
+*.ts
+!*.d.ts
+tsconfig.json
+.env
+.env.*
+node_modules/
+*.log
+.DS_Store
+uploads/
+prisma/migrations/
+

@@ -1,7 +1,6 @@
 import Foundation
 import SwiftUI
 
-@MainActor
 class LearningViewModel: ObservableObject {
     @Published var currentCard: Card?
     @Published var showAnswer = false
@@ -16,6 +15,7 @@ class LearningViewModel: ObservableObject {
         self.boxId = boxId
     }
     
+    @MainActor
     func loadNextCard() async {
         isLoading = true
         errorMessage = nil
@@ -31,6 +31,7 @@ class LearningViewModel: ObservableObject {
         isLoading = false
     }
     
+    @MainActor
     func submitReview(rating: ReviewRating) async {
         guard let card = currentCard else { return }
         
@@ -48,6 +49,7 @@ class LearningViewModel: ObservableObject {
         isLoading = false
     }
     
+    @MainActor
     func loadStats() async {
         do {
             stats = try await apiClient.getBoxStats(boxId: boxId)
