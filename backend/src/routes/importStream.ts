@@ -35,7 +35,7 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const userId = (req as any).userId;
-      const { boxId, text, goal, sourceLanguage, targetLanguage } = req.body;
+      const { boxId, text, goal, sourceLanguage, targetLanguage, desiredCardCount } = req.body;
 
       if (!boxId) {
         return res.status(400).json({ error: "boxId is required" });
@@ -97,11 +97,13 @@ router.post(
                 const chunk = chunks[i];
                 sendEvent({ type: "status", message: `Verarbeite Abschnitt ${i + 1} von ${chunks.length}...` });
 
+                const desiredCount = desiredCardCount ? parseInt(desiredCardCount, 10) : undefined;
                 for await (const event of generateCardsFromTextStream(
                   chunk,
                   sourceLanguage || "Deutsch",
                   targetLanguage || "Englisch",
                   goal || undefined,
+                  desiredCount,
                   (status) => {
                     sendEvent({ type: "status", message: status });
                   }
@@ -120,6 +122,7 @@ router.post(
             }
           } else if (mimetype.startsWith("image/")) {
             // Für Bilder: Direkt an OpenAI Vision API senden
+            const desiredCount = desiredCardCount ? parseInt(desiredCardCount, 10) : undefined;
             for await (const event of generateCardsFromFileStream(
               req.file.buffer,
               filename,
@@ -127,6 +130,7 @@ router.post(
               goal || undefined,
               sourceLanguage || "Deutsch",
               targetLanguage || "Englisch",
+              desiredCount,
               (status) => {
                 sendEvent({ type: "status", message: status });
               }
@@ -186,11 +190,13 @@ router.post(
             let chunkCards: Array<{ front: string; back: string; tags?: string }> = [];
             let hasError = false;
             
+            const desiredCount = desiredCardCount ? parseInt(desiredCardCount, 10) : undefined;
             for await (const event of generateCardsFromTextStream(
               chunk,
               sourceLanguage || "Deutsch",
               targetLanguage || "Englisch",
               goal || undefined,
+              desiredCount,
               (status) => {
                 sendEvent({ type: "status", message: status });
               }

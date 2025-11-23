@@ -23,6 +23,7 @@ export async function* generateCardsFromFileStream(
   goal: string | undefined,
   sourceLanguage: string = "Deutsch",
   targetLanguage: string = "Englisch",
+  desiredCardCount?: number,
   onStatusUpdate?: (status: string) => void
 ): AsyncGenerator<StreamEvent, void, unknown> {
   if (!process.env.OPENAI_API_KEY) {
@@ -82,7 +83,7 @@ Antworte NUR mit einem JSON-Array im folgenden Format:
   }
 ]
 
-Erstelle so viele Karten wie sinnvoll möglich. ${isVocabularyRequest ? "Fokussiere dich auf wichtige Vokabeln und Phrasen." : "Fokussiere dich auf wichtige Konzepte, Definitionen und Zusammenhänge."}`
+${desiredCardCount && desiredCardCount > 0 ? `Erstelle maximal ${desiredCardCount} Karten. Wenn weniger Inhalt vorhanden ist, erstelle weniger.` : "Erstelle so viele Karten wie sinnvoll möglich."} ${isVocabularyRequest ? "Fokussiere dich auf wichtige Vokabeln und Phrasen." : "Fokussiere dich auf wichtige Konzepte, Definitionen und Zusammenhänge."}`
       : `Analysiere den Inhalt dieses Bildes. ${cardTypeInstruction}
 - Tags: Relevante Themen/Kategorien (optional, kommagetrennt)
 
@@ -95,14 +96,14 @@ Antworte NUR mit einem JSON-Array im folgenden Format:
   }
 ]
 
-Erstelle so viele Karten wie sinnvoll möglich. ${isVocabularyRequest ? "Fokussiere dich auf wichtige Vokabeln und Phrasen." : "Fokussiere dich auf wichtige Konzepte, Definitionen und Zusammenhänge."}`;
+${desiredCardCount && desiredCardCount > 0 ? `Erstelle maximal ${desiredCardCount} Karten. Wenn weniger Inhalt vorhanden ist, erstelle weniger.` : "Erstelle so viele Karten wie sinnvoll möglich."} ${isVocabularyRequest ? "Fokussiere dich auf wichtige Vokabeln und Phrasen." : "Fokussiere dich auf wichtige Konzepte, Definitionen und Zusammenhänge."}`;
 
     yield { type: "status", message: "KI analysiert Bild..." };
     onStatusUpdate?.("KI analysiert Bild...");
 
     // Verwende Vision API nur für Bilder
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o", // Vision-fähiges Modell
+      model: "gpt-5-mini-2025-08-07", // Vision-fähiges Modell
       messages: [
         {
           role: "system",

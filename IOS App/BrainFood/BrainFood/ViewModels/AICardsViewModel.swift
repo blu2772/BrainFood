@@ -22,6 +22,8 @@ class AICardsViewModel: ObservableObject {
     @Published var currentStatus: String = ""
     @Published var processingProgress: Double = 0.0
     @Published var cardsCreatedCount: Int = 0 // Anzahl der erstellten Karten
+    @Published var desiredCardCount: Double = 20 // Gewünschte Anzahl Karten (0 = unbegrenzt, 1-200)
+    @Published var isUnlimited: Bool = false // Unbegrenzt-Modus
     
     private let apiClient = APIClient.shared
     let boxId: String
@@ -153,8 +155,20 @@ class AICardsViewModel: ObservableObject {
                     processNextSource()
                 }
             case .image:
-                currentStatus = "⚠ Bilder werden aktuell noch nicht unterstützt"
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                if let imageData = source.data, let filename = source.filename {
+                    processImageSource(imageData: imageData, filename: filename) { cards in
+                        // Füge finale Karten hinzu (falls noch nicht durch Live-Parsing erkannt)
+                        for card in cards {
+                            if !self.suggestedCards.contains(where: { $0.front == card.front && $0.back == card.back }) {
+                                self.suggestedCards.append(card)
+                                self.selectedCards.insert(card.id)
+                            }
+                        }
+                        allCards.append(contentsOf: cards)
+                        processedSources += 1
+                        processNextSource()
+                    }
+                } else {
                     processedSources += 1
                     processNextSource()
                 }
@@ -165,11 +179,16 @@ class AICardsViewModel: ObservableObject {
     }
     
     private func processTextSource(text: String, completion: @escaping ([CardSuggestion]) -> Void) {
+        let desiredCount = isUnlimited ? nil : (desiredCardCount > 0 ? Int(desiredCardCount) : nil)
         apiClient.suggestCardsStream(
             boxId: boxId,
             goal: goal.isEmpty ? nil : goal,
             text: text,
             pdfData: nil,
+            imageData: nil,
+            filename: nil,
+            mimeType: nil,
+            desiredCardCount: desiredCount,
             onEvent: { [weak self] event in
                 guard let self = self else { return }
                 
@@ -178,7 +197,7 @@ class AICardsViewModel: ObservableObject {
                     
                     switch event.type {
                     case "status":
-                        self.currentStatus = event.message
+                        // Status-Meldungen werden nicht mehr angezeigt, nur für Debugging
                         print("   📊 Status: \(event.message)")
                         // Aktualisiere Kartenanzahl wenn in Status-Meldung enthalten
                         if event.message.contains("Karten") || event.message.contains("Karte") {
@@ -212,10 +231,10 @@ class AICardsViewModel: ObservableObject {
                             }
                             
                             self.cardsCreatedCount = self.suggestedCards.count
-                            self.currentStatus = "KI generiert... (\(self.cardsCreatedCount) Karte\(self.cardsCreatedCount == 1 ? "" : "n") erkannt)"
+                            // Status wird nicht mehr gesetzt, nur Counter wird aktualisiert
                             print("   📦 Live: \(newCards.count) neue Karten erkannt, Gesamt: \(self.cardsCreatedCount)")
                         } else if let partial = event.data?.partial {
-                            self.currentStatus = "KI schreibt: \(partial.prefix(50))..."
+                            // Partial-Content wird nicht mehr angezeigt
                             print("   ✍️ Content: \(partial.prefix(100))...")
                         }
                     case "done":
@@ -271,11 +290,16 @@ class AICardsViewModel: ObservableObject {
     
     private func processPDFSource(pdfData: Data, completion: @escaping ([CardSuggestion]) -> Void) {
         print("🚀 [AICardsViewModel] Starte PDF-Verarbeitung (Größe: \(pdfData.count) bytes)")
+        let desiredCount = isUnlimited ? nil : (desiredCardCount > 0 ? Int(desiredCardCount) : nil)
         apiClient.suggestCardsStream(
             boxId: boxId,
             goal: goal.isEmpty ? nil : goal,
             text: nil,
             pdfData: pdfData,
+            imageData: nil,
+            filename: nil,
+            mimeType: nil,
+            desiredCardCount: desiredCount,
             onEvent: { [weak self] event in
                 guard let self = self else { return }
                 
@@ -284,7 +308,7 @@ class AICardsViewModel: ObservableObject {
                     
                     switch event.type {
                     case "status":
-                        self.currentStatus = event.message
+                        // Status-Meldungen werden nicht mehr angezeigt, nur für Debugging
                         print("   📊 Status: \(event.message)")
                         // Aktualisiere Kartenanzahl wenn in Status-Meldung enthalten
                         if event.message.contains("Karten") || event.message.contains("Karte") {
@@ -318,10 +342,10 @@ class AICardsViewModel: ObservableObject {
                             }
                             
                             self.cardsCreatedCount = self.suggestedCards.count
-                            self.currentStatus = "KI generiert... (\(self.cardsCreatedCount) Karte\(self.cardsCreatedCount == 1 ? "" : "n") erkannt)"
+                            // Status wird nicht mehr gesetzt, nur Counter wird aktualisiert
                             print("   📦 Live: \(newCards.count) neue Karten erkannt, Gesamt: \(self.cardsCreatedCount)")
                         } else if let partial = event.data?.partial {
-                            self.currentStatus = "KI schreibt: \(partial.prefix(50))..."
+                            // Partial-Content wird nicht mehr angezeigt
                             print("   ✍️ Content: \(partial.prefix(100))...")
                         }
                     case "done":
@@ -367,6 +391,117 @@ class AICardsViewModel: ObservableObject {
                 guard let self = self else { return }
                 DispatchQueue.main.async {
                     print("❌ [AICardsViewModel] Network Error (PDF): \(error.localizedDescription)")
+                    self.errorMessage = error.localizedDescription
+                    self.currentStatus = "❌ Fehler: \(error.localizedDescription)"
+                    completion([])
+                }
+            }
+        )
+    }
+    
+    private func processImageSource(imageData: Data, filename: String, completion: @escaping ([CardSuggestion]) -> Void) {
+        print("🚀 [AICardsViewModel] Starte Bild-Verarbeitung (Größe: \(imageData.count) bytes)")
+        let desiredCount = isUnlimited ? nil : (desiredCardCount > 0 ? Int(desiredCardCount) : nil)
+        // Bestimme MIME-Type basierend auf Dateiname
+        let mimeType: String
+        if filename.lowercased().hasSuffix(".png") {
+            mimeType = "image/png"
+        } else if filename.lowercased().hasSuffix(".jpg") || filename.lowercased().hasSuffix(".jpeg") {
+            mimeType = "image/jpeg"
+        } else {
+            mimeType = "image/jpeg" // Default
+        }
+        
+        apiClient.suggestCardsStream(
+            boxId: boxId,
+            goal: goal.isEmpty ? nil : goal,
+            text: nil,
+            pdfData: nil,
+            imageData: imageData,
+            filename: filename,
+            mimeType: mimeType,
+            desiredCardCount: desiredCount,
+            onEvent: { [weak self] event in
+                guard let self = self else { return }
+                
+                DispatchQueue.main.async {
+                    print("📨 [AICardsViewModel] Event empfangen (Image): type=\(event.type), message=\(event.message.prefix(100))")
+                    
+                    switch event.type {
+                    case "status":
+                        // Status-Meldungen werden nicht mehr angezeigt, nur für Debugging
+                        print("   📊 Status: \(event.message)")
+                    case "content":
+                        // Prüfe ob partialCards vorhanden sind (live erkannte Karten)
+                        if let partialCards = event.data?.partialCards as? [[String: AnyCodable]] {
+                            // Konvertiere zu CardSuggestion
+                            let newCards = partialCards.compactMap { dict -> CardSuggestion? in
+                                guard let front = dict["front"]?.value as? String,
+                                      let back = dict["back"]?.value as? String else {
+                                    return nil
+                                }
+                                let tags = dict["tags"]?.value as? String
+                                return CardSuggestion(front: front, back: back, tags: tags)
+                            }
+                            
+                            // Füge neue Karten hinzu (nur wenn noch nicht vorhanden)
+                            for card in newCards {
+                                if !self.suggestedCards.contains(where: { $0.front == card.front && $0.back == card.back }) {
+                                    self.suggestedCards.append(card)
+                                    self.selectedCards.insert(card.id)
+                                }
+                            }
+                            
+                            self.cardsCreatedCount = self.suggestedCards.count
+                            // Status wird nicht mehr gesetzt, nur Counter wird aktualisiert
+                            print("   📦 Live: \(newCards.count) neue Karten erkannt, Gesamt: \(self.cardsCreatedCount)")
+                        } else if let partial = event.data?.partial {
+                            // Partial-Content wird nicht mehr angezeigt
+                            print("   ✍️ Content: \(partial.prefix(100))...")
+                        }
+                    case "done":
+                        print("🟢 [AICardsViewModel] 'done' Event empfangen (Image)")
+                        if let cards = event.data?.cards {
+                            print("   📦 \(cards.count) Karten im Event")
+                            
+                            // Validiere und filtere ungültige Karten
+                            let validCards = cards.filter { card in
+                                let isValid = !card.front.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                                            !card.back.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                if !isValid {
+                                    print("   ⚠️ Ungültige Karte gefiltert: front='\(card.front.prefix(30))...' back='\(card.back.prefix(30))...'")
+                                }
+                                return isValid
+                            }
+                            print("   ✅ \(validCards.count) gültige Karten nach Validierung")
+                            self.cardsCreatedCount = self.suggestedCards.count // Final count
+                            completion(validCards)
+                        } else {
+                            print("   ⚠️ Keine Karten im 'done' Event")
+                            completion([])
+                        }
+                    case "error":
+                        print("❌ [AICardsViewModel] Error Event (Image):")
+                        print("   Message: \(event.message)")
+                        if let errorData = event.data?.error {
+                            print("   Error Data: \(errorData)")
+                        }
+                        if let rawContent = event.data?.rawContent {
+                            print("   Raw Content (erste 500 Zeichen):")
+                            print("   \(rawContent.prefix(500))")
+                        }
+                        self.errorMessage = event.message
+                        self.currentStatus = "❌ \(event.message)"
+                        completion([])
+                    default:
+                        break
+                    }
+                }
+            },
+            onError: { [weak self] error in
+                guard let self = self else { return }
+                DispatchQueue.main.async {
+                    print("❌ [AICardsViewModel] Network Error (Image): \(error.localizedDescription)")
                     self.errorMessage = error.localizedDescription
                     self.currentStatus = "❌ Fehler: \(error.localizedDescription)"
                     completion([])

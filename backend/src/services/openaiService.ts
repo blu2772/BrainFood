@@ -38,7 +38,7 @@ Erstelle so viele Karten wie sinnvoll möglich. Fokussiere dich auf wichtige Vok
 
   try {
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-5-mini-2025-08-07",
       messages: [
         {
           role: "system",

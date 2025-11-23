@@ -150,7 +150,7 @@ class SSEClient: NSObject, URLSessionDataDelegate {
                             self.onEvent(SSEEvent(
                                 type: "error",
                                 message: "JSON Parse Fehler: \(error.localizedDescription)",
-                                data: SSEEventData(cards: nil, partial: nil, error: error.localizedDescription, rawContent: jsonString)
+                                data: SSEEventData(cards: nil, partial: nil, partialCards: nil, error: error.localizedDescription, rawContent: jsonString)
                             ))
                         }
                     }

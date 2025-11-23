@@ -87,6 +87,55 @@ struct GoalStepView: View {
                 .cornerRadius(10)
                 .padding(.horizontal)
             
+            // Kartenanzahl Slider
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("Anzahl Karten")
+                        .font(.headline)
+                    Spacer()
+                    if viewModel.isUnlimited {
+                        Text("Unbegrenzt")
+                            .font(.subheadline)
+                            .foregroundColor(.blue)
+                            .fontWeight(.medium)
+                    } else {
+                        Text("\(Int(viewModel.desiredCardCount))")
+                            .font(.subheadline)
+                            .foregroundColor(.blue)
+                            .fontWeight(.medium)
+                    }
+                }
+                
+                HStack {
+                    Toggle("Unbegrenzt", isOn: $viewModel.isUnlimited)
+                        .toggleStyle(SwitchToggleStyle())
+                    Spacer()
+                }
+                
+                if !viewModel.isUnlimited {
+                    Slider(value: $viewModel.desiredCardCount, in: 1...200, step: 1)
+                        .accentColor(.blue)
+                    
+                    HStack {
+                        Text("1")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text("200")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                Text("Die KI erstellt maximal diese Anzahl Karten. Wenn weniger Inhalt vorhanden ist, werden weniger erstellt.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding()
+            .background(Color(.systemGray6))
+            .cornerRadius(10)
+            .padding(.horizontal)
+            
             Spacer()
             
             Button(action: {
@@ -371,23 +420,26 @@ struct ProcessingStepView: View {
                     .symbolEffect(.pulse, options: .repeating)
             }
             
-            // Status Text
+            // Status Text - Nur Counter, keine KI-Nachrichten
             VStack(spacing: 12) {
-                Text(viewModel.currentStatus.isEmpty ? "KI erstellt deine Karteikarten..." : viewModel.currentStatus)
-                    .font(.headline)
-                    .multilineTextAlignment(.center)
-                    .animation(.easeInOut(duration: 0.3), value: viewModel.currentStatus)
-                    .transition(.opacity.combined(with: .scale))
-                    .id(viewModel.currentStatus) // Force re-render on change
-                
-                // Zeige Anzahl der erstellten Karten
                 if viewModel.cardsCreatedCount > 0 {
                     Text("\(viewModel.cardsCreatedCount) Karte\(viewModel.cardsCreatedCount == 1 ? "" : "n") erstellt")
-                        .font(.subheadline)
+                        .font(.title2)
+                        .fontWeight(.bold)
                         .foregroundColor(.blue)
-                        .fontWeight(.medium)
-                } else if viewModel.currentStatus.isEmpty {
-                    Text("Dies kann einen Moment dauern")
+                        .animation(.easeInOut(duration: 0.3), value: viewModel.cardsCreatedCount)
+                } else {
+                    Text("KI erstellt Karten...")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                }
+                
+                if viewModel.isUnlimited {
+                    Text("Unbegrenzt")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                } else if viewModel.desiredCardCount > 0 {
+                    Text("Ziel: \(Int(viewModel.desiredCardCount)) Karten")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }

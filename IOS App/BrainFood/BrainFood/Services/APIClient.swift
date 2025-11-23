@@ -337,8 +337,12 @@ class APIClient {
         goal: String?,
         text: String?,
         pdfData: Data?,
+        imageData: Data?,
+        filename: String?,
+        mimeType: String?,
         sourceLanguage: String = "Deutsch",
         targetLanguage: String = "Englisch",
+        desiredCardCount: Int? = nil,
         onEvent: @escaping (SSEEvent) -> Void,
         onError: @escaping (Error) -> Void
     ) {
