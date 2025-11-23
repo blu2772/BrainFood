@@ -19,11 +19,13 @@ struct BoxDetailView: View {
                 }
                 .tag(0)
             
-            CardsView(boxId: box.id)
-                .tabItem {
-                    Label("Karten", systemImage: "rectangle.stack")
-                }
-                .tag(1)
+            NavigationStack {
+                CardsView(boxId: box.id)
+            }
+            .tabItem {
+                Label("Karten", systemImage: "rectangle.stack")
+            }
+            .tag(1)
             
             BoxSettingsView(box: box)
                 .tabItem {

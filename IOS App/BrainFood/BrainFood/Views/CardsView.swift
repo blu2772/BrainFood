@@ -20,8 +20,7 @@ struct CardsView: View {
     }
     
     var body: some View {
-        NavigationStack {
-            VStack {
+        VStack {
                 // Search Bar
                 SearchBar(text: $viewModel.searchText)
                     .padding(.horizontal)
@@ -31,7 +30,7 @@ struct CardsView: View {
                     ProgressView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if viewModel.filteredCards.isEmpty {
-                    VStack(spacing: 20) {
+                    VStack(spacing: 30) {
                         Image(systemName: "rectangle.stack")
                             .font(.system(size: 50))
                             .foregroundColor(.secondary)
@@ -40,6 +39,31 @@ struct CardsView: View {
                         Text("Erstelle deine erste Karteikarte")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
+                        
+                        VStack(spacing: 12) {
+                            Button(action: {
+                                showingAddCard = true
+                            }) {
+                                Label("Manuell erstellen", systemImage: "pencil")
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(Color.blue)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(10)
+                            }
+                            
+                            Button(action: {
+                                showingAICreation = true
+                            }) {
+                                Label("Mit KI erstellen", systemImage: "sparkles")
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(Color.purple)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(10)
+                            }
+                        }
+                        .padding(.horizontal, 40)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
@@ -61,6 +85,7 @@ struct CardsView: View {
                 }
             }
             .navigationTitle("Karten")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
@@ -76,7 +101,8 @@ struct CardsView: View {
                             Label("Mit KI erstellen", systemImage: "sparkles")
                         }
                     } label: {
-                        Image(systemName: "plus")
+                        Image(systemName: "plus.circle.fill")
+                            .font(.title2)
                     }
                 }
             }
@@ -98,7 +124,6 @@ struct CardsView: View {
             .refreshable {
                 await viewModel.loadCards()
             }
-        }
     }
 }
 

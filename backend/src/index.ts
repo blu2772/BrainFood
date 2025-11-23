@@ -7,6 +7,7 @@ import cardsRoutes from "./routes/cards";
 import reviewsRoutes from "./routes/reviews";
 import statsRoutes from "./routes/stats";
 import importRoutes from "./routes/import";
+import importStreamRoutes from "./routes/importStream";
 import apiKeysRoutes from "./routes/apiKeys";
 
 // Lade Umgebungsvariablen
@@ -50,6 +51,7 @@ app.use("/api", cardsRoutes);
 app.use("/api", reviewsRoutes);
 app.use("/api", statsRoutes);
 app.use("/api/import", importRoutes);
+app.use("/api/import", importStreamRoutes);
 
 // Error Handling Middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

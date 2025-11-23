@@ -12,8 +12,7 @@ struct AICardCreationView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: AICardsViewModel
     @ObservedObject var cardsViewModel: CardsViewModel
-    @State private var textInput = ""
-    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var selectedPDF: URL?
     
     var body: some View {
@@ -25,8 +24,7 @@ struct AICardCreationView: View {
                 case .sources:
                     SourcesStepView(
                         viewModel: viewModel,
-                        textInput: $textInput,
-                        selectedPhoto: $selectedPhoto,
+                        selectedPhotos: $selectedPhotos,
                         selectedPDF: $selectedPDF
                     )
                 case .processing:
@@ -109,113 +107,204 @@ struct GoalStepView: View {
 
 struct SourcesStepView: View {
     @ObservedObject var viewModel: AICardsViewModel
-    @Binding var textInput: String
-    @Binding var selectedPhoto: PhotosPickerItem?
+    @Binding var selectedPhotos: [PhotosPickerItem]
     @Binding var selectedPDF: URL?
+    @State private var showingImagePicker = false
+    @State private var showingPDFPicker = false
     
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 0) {
+            // Header
             VStack(alignment: .leading, spacing: 12) {
                 Text("Quellen hinzufügen")
                     .font(.title2)
                     .fontWeight(.bold)
                 
-                Text("Füge PDFs, Text oder Bilder hinzu, aus denen Karteikarten erstellt werden sollen.")
+                Text("Wähle PDFs oder Bilder aus, aus denen Karteikarten erstellt werden sollen.")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
             
-            // Text Input
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Text eingeben:")
-                    .font(.headline)
-                
-                TextEditor(text: $textInput)
-                    .frame(minHeight: 100)
-                    .padding(8)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(10)
-                
-                Button(action: {
-                    if !textInput.isEmpty {
-                        viewModel.addTextSource(textInput)
-                        textInput = ""
-                    }
-                }) {
-                    Label("Text hinzufügen", systemImage: "plus.circle")
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(10)
-                }
-                .disabled(textInput.isEmpty)
-            }
-            .padding(.horizontal)
-            
-            Divider()
-            
-            // PDF Upload
-            VStack(alignment: .leading, spacing: 8) {
-                Text("PDF hochladen:")
-                    .font(.headline)
-                
-                DocumentPicker { url in
-                    if let url = url {
-                        do {
-                            let data = try Data(contentsOf: url)
-                            let filename = url.lastPathComponent
-                            viewModel.addPDFSource(data, filename: filename)
-                        } catch {
-                            // Error handling
+            // Main Content - Buttons
+            ScrollView {
+                VStack(spacing: 20) {
+                    // PDF Button
+                    Button(action: {
+                        showingPDFPicker = true
+                    }) {
+                        VStack(spacing: 16) {
+                            Image(systemName: "doc.fill")
+                                .font(.system(size: 60))
+                                .foregroundColor(.white)
+                            Text("PDF auswählen")
+                                .font(.title2)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                            Text("Wähle PDF-Dateien aus")
+                                .font(.subheadline)
+                                .foregroundColor(.white.opacity(0.9))
                         }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 200)
+                        .background(
+                            LinearGradient(
+                                colors: [Color.blue, Color.blue.opacity(0.8)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .cornerRadius(20)
+                        .shadow(radius: 10)
                     }
-                }
-            }
-            .padding(.horizontal)
-            
-            // Selected Sources
-            if !viewModel.selectedSources.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Hinzugefügte Quellen:")
-                        .font(.headline)
-                        .padding(.horizontal)
+                    .padding(.horizontal)
                     
-                    List {
-                        ForEach(viewModel.selectedSources) { source in
-                            HStack {
-                                Image(systemName: sourceIcon(for: source.type))
-                                Text(sourceLabel(for: source))
-                                Spacer()
-                                Button(action: {
-                                    viewModel.removeSource(source)
-                                }) {
-                                    Image(systemName: "trash")
-                                        .foregroundColor(.red)
+                    // Image Button
+                    Button(action: {
+                        showingImagePicker = true
+                    }) {
+                        VStack(spacing: 16) {
+                            Image(systemName: "photo.fill")
+                                .font(.system(size: 60))
+                                .foregroundColor(.white)
+                            Text("Bilder auswählen")
+                                .font(.title2)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                            Text("Wähle Bilder aus der Galerie")
+                                .font(.subheadline)
+                                .foregroundColor(.white.opacity(0.9))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 200)
+                        .background(
+                            LinearGradient(
+                                colors: [Color.purple, Color.purple.opacity(0.8)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .cornerRadius(20)
+                        .shadow(radius: 10)
+                    }
+                    .padding(.horizontal)
+                    
+                    // Selected Sources List
+                    if !viewModel.selectedSources.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Ausgewählte Quellen (\(viewModel.selectedSources.count))")
+                                .font(.headline)
+                                .padding(.horizontal)
+                            
+                            VStack(spacing: 12) {
+                                ForEach(viewModel.selectedSources) { source in
+                                    HStack {
+                                        Image(systemName: sourceIcon(for: source.type))
+                                            .font(.title2)
+                                            .foregroundColor(sourceColor(for: source.type))
+                                            .frame(width: 40)
+                                        
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(sourceLabel(for: source))
+                                                .font(.body)
+                                                .fontWeight(.medium)
+                                            if let filename = source.filename {
+                                                Text(filename)
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                            }
+                                        }
+                                        
+                                        Spacer()
+                                        
+                                        Button(action: {
+                                            viewModel.removeSource(source)
+                                        }) {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .foregroundColor(.red)
+                                                .font(.title3)
+                                        }
+                                    }
+                                    .padding()
+                                    .background(Color(.systemGray6))
+                                    .cornerRadius(12)
                                 }
                             }
+                            .padding(.horizontal)
                         }
+                        .padding(.top)
                     }
-                    .frame(maxHeight: 200)
                 }
+                .padding(.vertical)
             }
             
-            Spacer()
-            
-            Button(action: {
-                viewModel.nextStep()
-            }) {
-                Text("Karten generieren")
+            // Generate Button - Immer sichtbar am unteren Rand
+            VStack(spacing: 8) {
+                if viewModel.selectedSources.isEmpty {
+                    Text("Bitte füge mindestens eine Quelle hinzu")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Button(action: {
+                    viewModel.nextStep()
+                }) {
+                    HStack {
+                        Text("Karten generieren")
+                            .font(.headline)
+                        if !viewModel.selectedSources.isEmpty {
+                            Text("(\(viewModel.selectedSources.count))")
+                                .font(.subheadline)
+                                .opacity(0.8)
+                        }
+                    }
                     .frame(maxWidth: .infinity)
                     .padding()
                     .background(viewModel.selectedSources.isEmpty ? Color.gray : Color.blue)
                     .foregroundColor(.white)
-                    .cornerRadius(10)
+                    .cornerRadius(12)
+                }
+                .disabled(viewModel.selectedSources.isEmpty)
             }
-            .disabled(viewModel.selectedSources.isEmpty)
             .padding()
+            .background(Color(.systemBackground))
+        }
+        .sheet(isPresented: $showingPDFPicker) {
+            DocumentPicker { url in
+                if let url = url {
+                    do {
+                        let data = try Data(contentsOf: url)
+                        let filename = url.lastPathComponent
+                        viewModel.addPDFSource(data, filename: filename)
+                    } catch {
+                        // Error handling
+                    }
+                }
+                showingPDFPicker = false
+            }
+        }
+        .photosPicker(
+            isPresented: $showingImagePicker,
+            selection: $selectedPhotos,
+            maxSelectionCount: 10,
+            matching: .images
+        )
+        .onChange(of: selectedPhotos) { oldValue, newValue in
+            // Verarbeite neue Fotos
+            let existingCount = viewModel.selectedSources.filter { $0.type == .image }.count
+            let newPhotos = newValue.suffix(newValue.count - oldValue.count)
+            
+            for (index, photo) in newPhotos.enumerated() {
+                Task {
+                    if let data = try? await photo.loadTransferable(type: Data.self) {
+                        await MainActor.run {
+                            let filename = "image_\(existingCount + index + 1).jpg"
+                            viewModel.addImageSource(data, filename: filename)
+                        }
+                    }
+                }
+            }
         }
     }
     
@@ -233,9 +322,20 @@ struct SourcesStepView: View {
             let preview = source.content?.prefix(50) ?? ""
             return "Text: \(preview)..."
         case .pdf:
-            return "PDF: \(source.filename ?? "Unbekannt")"
+            return source.filename ?? "PDF-Dokument"
         case .image:
-            return "Bild: \(source.filename ?? "Unbekannt")"
+            return source.filename ?? "Bild"
+        }
+    }
+    
+    private func sourceColor(for type: SourceType) -> Color {
+        switch type {
+        case .text:
+            return .blue
+        case .pdf:
+            return .blue
+        case .image:
+            return .purple
         }
     }
 }
@@ -244,24 +344,90 @@ struct ProcessingStepView: View {
     @ObservedObject var viewModel: AICardsViewModel
     
     var body: some View {
-        VStack(spacing: 24) {
-            ProgressView()
-                .scaleEffect(2)
+        VStack(spacing: 30) {
+            Spacer()
             
-            Text("KI erstellt deine Karteikarten...")
-                .font(.headline)
+            // Animated Brain Icon
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.blue.opacity(0.2), Color.purple.opacity(0.2)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 120, height: 120)
+                
+                Image(systemName: "brain.head.profile")
+                    .font(.system(size: 60))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color.blue, Color.purple],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .symbolEffect(.pulse, options: .repeating)
+            }
             
-            Text("Dies kann einen Moment dauern")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
+            // Status Text
+            VStack(spacing: 12) {
+                Text(viewModel.currentStatus.isEmpty ? "KI erstellt deine Karteikarten..." : viewModel.currentStatus)
+                    .font(.headline)
+                    .multilineTextAlignment(.center)
+                    .animation(.easeInOut(duration: 0.3), value: viewModel.currentStatus)
+                    .transition(.opacity.combined(with: .scale))
+                    .id(viewModel.currentStatus) // Force re-render on change
+                
+                if viewModel.currentStatus.isEmpty {
+                    Text("Dies kann einen Moment dauern")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .frame(minHeight: 80)
+            
+            // Progress Bar
+            VStack(spacing: 8) {
+                ProgressView(value: viewModel.processingProgress)
+                    .progressViewStyle(LinearProgressViewStyle(tint: .blue))
+                    .scaleEffect(x: 1, y: 2, anchor: .center)
+                
+                Text("\(Int(viewModel.processingProgress * 100))%")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 40)
+            
+            // Thinking Animation
+            HStack(spacing: 8) {
+                ForEach(0..<3) { index in
+                    Circle()
+                        .fill(Color.blue)
+                        .frame(width: 12, height: 12)
+                        .scaleEffect(viewModel.isProcessing ? 1.0 : 0.5)
+                        .animation(
+                            Animation.easeInOut(duration: 0.6)
+                                .repeatForever()
+                                .delay(Double(index) * 0.2),
+                            value: viewModel.isProcessing
+                        )
+                }
+            }
+            .padding(.top)
             
             if let error = viewModel.errorMessage {
                 Text(error)
                     .foregroundColor(.red)
                     .padding()
+                    .padding(.top)
             }
+            
+            Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
     }
 }
 
@@ -297,6 +463,23 @@ struct ReviewStepView: View {
                             angle: index == currentIndex ? dragAngle : 0,
                             onToggle: {
                                 viewModel.toggleCardSelection(card.id)
+                            },
+                            onDragChanged: { translation in
+                                dragOffset = translation
+                                dragAngle = Double(translation.width / 20)
+                            },
+                            onDragEnded: { translation in
+                                let threshold: CGFloat = 100
+                                if abs(translation.width) > threshold {
+                                    // Swipe left (next) or right (previous)
+                                    if translation.width > 0 && currentIndex > 0 {
+                                        currentIndex -= 1
+                                    } else if translation.width < 0 && currentIndex < viewModel.suggestedCards.count - 1 {
+                                        currentIndex += 1
+                                    }
+                                }
+                                dragOffset = .zero
+                                dragAngle = 0
                             }
                         )
                         .zIndex(Double(viewModel.suggestedCards.count - index))
@@ -374,6 +557,8 @@ struct CardPreviewView: View {
     var offset: CGSize
     var angle: Double = 0
     let onToggle: () -> Void
+    let onDragChanged: (CGSize) -> Void
+    let onDragEnded: (CGSize) -> Void
     
     var body: some View {
         VStack(spacing: 16) {
@@ -428,21 +613,10 @@ struct CardPreviewView: View {
                         .gesture(
                             DragGesture()
                                 .onChanged { value in
-                                    dragOffset = value.translation
-                                    dragAngle = Double(value.translation.width / 20)
+                                    onDragChanged(value.translation)
                                 }
                                 .onEnded { value in
-                                    let threshold: CGFloat = 100
-                                    if abs(value.translation.width) > threshold {
-                                        // Swipe left (next) or right (previous)
-                                        if value.translation.width > 0 && currentIndex > 0 {
-                                            currentIndex -= 1
-                                        } else if value.translation.width < 0 && currentIndex < viewModel.suggestedCards.count - 1 {
-                                            currentIndex += 1
-                                        }
-                                    }
-                                    dragOffset = .zero
-                                    dragAngle = 0
+                                    onDragEnded(value.translation)
                                 }
                         )
     }

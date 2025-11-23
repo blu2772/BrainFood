@@ -19,6 +19,8 @@ class AICardsViewModel: ObservableObject {
     @Published var suggestedCards: [CardSuggestion] = []
     @Published var selectedCards: Set<String> = []
     @Published var errorMessage: String?
+    @Published var currentStatus: String = ""
+    @Published var processingProgress: Double = 0.0
     
     private let apiClient = APIClient.shared
     let boxId: String
@@ -68,54 +70,166 @@ class AICardsViewModel: ObservableObject {
         selectedSources.append(source)
     }
     
+    func addImageSource(_ data: Data, filename: String) {
+        let source = SourceItem(type: .image, content: nil, data: data, filename: filename)
+        selectedSources.append(source)
+    }
+    
     func removeSource(_ source: SourceItem) {
         selectedSources.removeAll { $0.id == source.id }
     }
     
+    private var sseClient: SSEClient?
+    
     private func processSources() {
         isProcessing = true
         errorMessage = nil
+        currentStatus = "Starte Verarbeitung..."
+        processingProgress = 0.0
         
-        Task {
-            do {
-                var allCards: [CardSuggestion] = []
+        var allCards: [CardSuggestion] = []
+        var processedSources = 0
+        let totalSources = selectedSources.count
+        
+        // Verarbeite jede Quelle mit Streaming
+        func processNextSource() {
+            guard processedSources < totalSources else {
+                // Alle Quellen verarbeitet
+                processingProgress = 1.0
+                currentStatus = "✓ Fertig! \(allCards.count) Karten erstellt"
                 
-                for source in selectedSources {
-                    switch source.type {
-                    case .text:
-                        if let text = source.content {
-                            let cards = try await apiClient.suggestCards(
-                                boxId: boxId,
-                                goal: goal.isEmpty ? nil : goal,
-                                text: text,
-                                pdfData: nil
-                            )
-                            allCards.append(contentsOf: cards)
-                        }
-                    case .pdf:
-                        if let pdfData = source.data {
-                            let cards = try await apiClient.suggestCards(
-                                boxId: boxId,
-                                goal: goal.isEmpty ? nil : goal,
-                                text: nil,
-                                pdfData: pdfData
-                            )
-                            allCards.append(contentsOf: cards)
-                        }
-                    }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self.suggestedCards = allCards
+                    self.selectedCards = Set(allCards.map { $0.id })
+                    self.currentStep = .review
+                    self.isProcessing = false
                 }
-                
-                suggestedCards = allCards
-                selectedCards = Set(allCards.map { $0.id })
-                currentStep = .review
-            } catch let error as APIError {
-                errorMessage = error.errorDescription
-            } catch {
-                errorMessage = "Fehler beim Generieren der Karten"
+                return
             }
             
-            isProcessing = false
+            let source = selectedSources[processedSources]
+            let progress = Double(processedSources) / Double(totalSources)
+            processingProgress = progress
+            
+            switch source.type {
+            case .text:
+                if let text = source.content {
+                    processTextSource(text: text) { cards in
+                        allCards.append(contentsOf: cards)
+                        processedSources += 1
+                        processNextSource()
+                    }
+                } else {
+                    processedSources += 1
+                    processNextSource()
+                }
+            case .pdf:
+                if let pdfData = source.data {
+                    processPDFSource(pdfData: pdfData) { cards in
+                        allCards.append(contentsOf: cards)
+                        processedSources += 1
+                        processNextSource()
+                    }
+                } else {
+                    processedSources += 1
+                    processNextSource()
+                }
+            case .image:
+                currentStatus = "⚠ Bilder werden aktuell noch nicht unterstützt"
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    processedSources += 1
+                    processNextSource()
+                }
+            }
         }
+        
+        processNextSource()
+    }
+    
+    private func processTextSource(text: String, completion: @escaping ([CardSuggestion]) -> Void) {
+        apiClient.suggestCardsStream(
+            boxId: boxId,
+            goal: goal.isEmpty ? nil : goal,
+            text: text,
+            pdfData: nil,
+            onEvent: { [weak self] event in
+                guard let self = self else { return }
+                
+                DispatchQueue.main.async {
+                    switch event.type {
+                    case "status":
+                        self.currentStatus = event.message
+                    case "content":
+                        if let partial = event.data?.partial {
+                            self.currentStatus = "KI schreibt: \(partial.prefix(50))..."
+                        }
+                    case "done":
+                        if let cards = event.data?.cards {
+                            completion(cards)
+                        } else {
+                            completion([])
+                        }
+                    case "error":
+                        self.errorMessage = event.message
+                        self.currentStatus = "❌ \(event.message)"
+                        completion([])
+                    default:
+                        break
+                    }
+                }
+            },
+            onError: { [weak self] error in
+                guard let self = self else { return }
+                DispatchQueue.main.async {
+                    self.errorMessage = error.localizedDescription
+                    self.currentStatus = "❌ Fehler: \(error.localizedDescription)"
+                    completion([])
+                }
+            }
+        )
+    }
+    
+    private func processPDFSource(pdfData: Data, completion: @escaping ([CardSuggestion]) -> Void) {
+        apiClient.suggestCardsStream(
+            boxId: boxId,
+            goal: goal.isEmpty ? nil : goal,
+            text: nil,
+            pdfData: pdfData,
+            onEvent: { [weak self] event in
+                guard let self = self else { return }
+                
+                DispatchQueue.main.async {
+                    switch event.type {
+                    case "status":
+                        self.currentStatus = event.message
+                    case "content":
+                        if let partial = event.data?.partial {
+                            self.currentStatus = "KI schreibt: \(partial.prefix(50))..."
+                        }
+                    case "done":
+                        if let cards = event.data?.cards {
+                            completion(cards)
+                        } else {
+                            completion([])
+                        }
+                    case "error":
+                        self.errorMessage = event.message
+                        self.currentStatus = "❌ \(event.message)"
+                        completion([])
+                    default:
+                        break
+                    }
+                }
+            },
+            onError: { [weak self] error in
+                guard let self = self else { return }
+                DispatchQueue.main.async {
+                    self.errorMessage = error.localizedDescription
+                    self.currentStatus = "❌ Fehler: \(error.localizedDescription)"
+                    completion([])
+                }
+            }
+        )
     }
     
     func toggleCardSelection(_ cardId: String) {
