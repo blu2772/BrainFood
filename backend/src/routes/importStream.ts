@@ -4,7 +4,7 @@ import { PrismaClient } from "@prisma/client";
 import { authenticateTokenOrApiKey } from "../middleware/authOptional";
 import { generateCardsFromFileStream } from "../services/openaiFileService";
 import { generateCardsFromTextStream } from "../services/openaiStreamService";
-import { chunkText } from "../services/pdfService";
+import { extractTextFromPDF, chunkText } from "../services/pdfService";
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -65,7 +65,7 @@ router.post(
 
       const allCards: Array<{ front: string; back: string; tags?: string }> = [];
 
-      // Wenn Datei hochgeladen wurde, verwende File API (direkt an OpenAI)
+      // Wenn Datei hochgeladen wurde
       if (req.file) {
         const mimetype = req.file.mimetype;
         const filename = req.file.originalname || (mimetype.startsWith("image/") ? "image.jpg" : "document.pdf");
@@ -73,28 +73,81 @@ router.post(
         try {
           let fileCards: Array<{ front: string; back: string; tags?: string }> = [];
 
-          for await (const event of generateCardsFromFileStream(
-            req.file.buffer,
-            filename,
-            mimetype,
-            goal || undefined,
-            sourceLanguage || "Deutsch",
-            targetLanguage || "Englisch",
-            (status) => {
-              sendEvent({ type: "status", message: status });
-            }
-          )) {
-            // Sende alle Events weiter
-            sendEvent(event);
-
-            if (event.type === "done" && event.data?.cards) {
-              fileCards = event.data.cards;
-            } else if (event.type === "error") {
+          // WICHTIG: OpenAI Vision API unterstützt nur Bilder, keine PDFs!
+          // Für PDFs: Text extrahieren und dann Text-Stream verwenden
+          if (mimetype === "application/pdf") {
+            sendEvent({ type: "status", message: "Extrahiere Text aus PDF..." });
+            
+            const pdfText = await extractTextFromPDF(req.file.buffer);
+            
+            if (!pdfText || pdfText.trim().length === 0) {
               sendEvent({ 
                 type: "error", 
-                message: event.message 
+                message: "Konnte keinen Text aus PDF extrahieren" 
               });
+            } else {
+              sendEvent({ type: "status", message: `✓ ${pdfText.length} Zeichen extrahiert` });
+              
+              // Teile Text in Chunks
+              const chunks = chunkText(pdfText, 3000);
+              sendEvent({ type: "status", message: `Verarbeite ${chunks.length} Abschnitte...` });
+
+              // Verarbeite jeden Chunk
+              for (let i = 0; i < chunks.length; i++) {
+                const chunk = chunks[i];
+                sendEvent({ type: "status", message: `Verarbeite Abschnitt ${i + 1} von ${chunks.length}...` });
+
+                for await (const event of generateCardsFromTextStream(
+                  chunk,
+                  sourceLanguage || "Deutsch",
+                  targetLanguage || "Englisch",
+                  goal || undefined,
+                  (status) => {
+                    sendEvent({ type: "status", message: status });
+                  }
+                )) {
+                  sendEvent(event);
+                  if (event.type === "done" && event.data?.cards) {
+                    fileCards.push(...event.data.cards);
+                  } else if (event.type === "error") {
+                    sendEvent({ 
+                      type: "error", 
+                      message: `Fehler in Abschnitt ${i + 1}: ${event.message}` 
+                    });
+                  }
+                }
+              }
             }
+          } else if (mimetype.startsWith("image/")) {
+            // Für Bilder: Direkt an OpenAI Vision API senden
+            for await (const event of generateCardsFromFileStream(
+              req.file.buffer,
+              filename,
+              mimetype,
+              goal || undefined,
+              sourceLanguage || "Deutsch",
+              targetLanguage || "Englisch",
+              (status) => {
+                sendEvent({ type: "status", message: status });
+              }
+            )) {
+              // Sende alle Events weiter
+              sendEvent(event);
+
+              if (event.type === "done" && event.data?.cards) {
+                fileCards = event.data.cards;
+              } else if (event.type === "error") {
+                sendEvent({ 
+                  type: "error", 
+                  message: event.message 
+                });
+              }
+            }
+          } else {
+            sendEvent({ 
+              type: "error", 
+              message: "Nur PDFs und Bilder werden unterstützt" 
+            });
           }
 
           if (fileCards.length > 0) {
@@ -137,6 +190,7 @@ router.post(
               chunk,
               sourceLanguage || "Deutsch",
               targetLanguage || "Englisch",
+              goal || undefined,
               (status) => {
                 sendEvent({ type: "status", message: status });
               }

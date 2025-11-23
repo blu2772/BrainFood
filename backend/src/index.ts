@@ -19,10 +19,19 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 
-// Body Parser mit erhöhten Limits (MUSS vor anderen Middlewares stehen)
-// WICHTIG: Für multipart/form-data (File-Uploads) wird Multer verwendet, nicht diese Parser
+// Body Parser mit erhöhten Limits
+// WICHTIG: express.urlencoded wird nur auf application/x-www-form-urlencoded angewendet
+// Für multipart/form-data (File-Uploads) wird Multer verwendet, nicht diese Parser
 app.use(express.json({ limit: "50mb" })); // Erhöhtes Limit für große Dateien
-app.use(express.urlencoded({ extended: true, limit: "50mb", parameterLimit: 50000 })); // Erhöhtes Limit für große Dateien
+
+// urlencoded nur auf application/x-www-form-urlencoded anwenden (nicht auf multipart/form-data)
+app.use((req, res, next) => {
+  if (req.is("application/x-www-form-urlencoded")) {
+    express.urlencoded({ extended: true, limit: "50mb", parameterLimit: 50000 })(req, res, next);
+  } else {
+    next();
+  }
+});
 
 // Wichtig: Multer verarbeitet multipart/form-data, nicht json/urlencoded
 // Für File-Uploads wird Multer verwendet, das sein eigenes Limit hat (20 MB)

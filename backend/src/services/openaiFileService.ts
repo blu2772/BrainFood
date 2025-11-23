@@ -13,7 +13,8 @@ export interface StreamEvent {
 /**
  * Generiert Karteikarten aus einer Datei (PDF oder Bild) mit OpenAI Vision API
  * Sendet Live-Updates während der Generierung
- * Dateien werden direkt als Base64 an OpenAI gesendet (keine vorherige Textkonvertierung)
+ * WICHTIG: OpenAI Vision API unterstützt nur Bilder, keine PDFs!
+ * Für PDFs wird der Text extrahiert und dann der Text-Stream verwendet.
  */
 export async function* generateCardsFromFileStream(
   fileBuffer: Buffer,
@@ -30,20 +31,30 @@ export async function* generateCardsFromFileStream(
   }
 
   try {
-    yield { type: "status", message: "Bereite Datei für OpenAI vor..." };
-    onStatusUpdate?.("Bereite Datei vor...");
+    // WICHTIG: OpenAI Vision API unterstützt nur Bilder, keine PDFs!
+    if (mimeType === "application/pdf") {
+      yield { type: "error", message: "PDFs müssen zuerst zu Text konvertiert werden. Bitte verwende die Text-Import-Funktion." };
+      return;
+    }
 
-    // Konvertiere Datei zu Base64 für direkten Upload
+    if (!mimeType.startsWith("image/")) {
+      yield { type: "error", message: "Nur Bilder werden unterstützt. PDFs müssen zuerst zu Text konvertiert werden." };
+      return;
+    }
+
+    yield { type: "status", message: "Bereite Bild für OpenAI vor..." };
+    onStatusUpdate?.("Bereite Bild vor...");
+
+    // Konvertiere Bild zu Base64 für direkten Upload
     const base64File = fileBuffer.toString("base64");
     const fileDataUrl = `data:${mimeType};base64,${base64File}`;
 
-    yield { type: "status", message: "✓ Datei vorbereitet" };
-    onStatusUpdate?.("✓ Datei vorbereitet");
+    yield { type: "status", message: "✓ Bild vorbereitet" };
+    onStatusUpdate?.("✓ Bild vorbereitet");
 
     // Erstelle Prompt
-    const fileType = mimeType.startsWith("image/") ? "Bild" : "PDF";
     const prompt = goal
-      ? `Ziel: ${goal}\n\nAnalysiere den Inhalt dieser ${fileType}-Datei und erstelle Vokabelkarten im Format:
+      ? `Ziel: ${goal}\n\nAnalysiere den Inhalt dieses Bildes und erstelle Vokabelkarten im Format:
 - Front: Das zu lernende Wort/Phrase in ${sourceLanguage}
 - Back: Die Übersetzung/Erklärung in ${targetLanguage}
 - Tags: Relevante Themen/Kategorien (optional, kommagetrennt)
@@ -58,7 +69,7 @@ Antworte NUR mit einem JSON-Array im folgenden Format:
 ]
 
 Erstelle so viele Karten wie sinnvoll möglich.`
-      : `Analysiere den Inhalt dieser ${fileType}-Datei und erstelle Vokabelkarten im Format:
+      : `Analysiere den Inhalt dieses Bildes und erstelle Vokabelkarten im Format:
 - Front: Das zu lernende Wort/Phrase in ${sourceLanguage}
 - Back: Die Übersetzung/Erklärung in ${targetLanguage}
 - Tags: Relevante Themen/Kategorien (optional, kommagetrennt)
@@ -74,12 +85,12 @@ Antworte NUR mit einem JSON-Array im folgenden Format:
 
 Erstelle so viele Karten wie sinnvoll möglich.`;
 
-    yield { type: "status", message: `KI analysiert ${fileType}...` };
-    onStatusUpdate?.(`KI analysiert ${fileType}...`);
+    yield { type: "status", message: "KI analysiert Bild..." };
+    onStatusUpdate?.("KI analysiert Bild...");
 
-    // Verwende Vision API für PDFs und Bilder
+    // Verwende Vision API nur für Bilder
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o", // Unterstützt PDFs und Bilder direkt
+      model: "gpt-4o", // Vision-fähiges Modell
       messages: [
         {
           role: "system",
@@ -92,7 +103,7 @@ Erstelle so viele Karten wie sinnvoll möglich.`;
             {
               type: "image_url",
               image_url: {
-                url: fileDataUrl, // PDF oder Bild als Base64 Data URL
+                url: fileDataUrl, // Bild als Base64 Data URL
               },
             },
           ],

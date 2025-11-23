@@ -18,6 +18,7 @@ export async function* generateCardsFromTextStream(
   text: string,
   sourceLanguage: string = "Deutsch",
   targetLanguage: string = "Englisch",
+  goal?: string,
   onStatusUpdate?: (status: string) => void
 ): AsyncGenerator<StreamEvent, void, unknown> {
   if (!process.env.OPENAI_API_KEY) {
@@ -25,7 +26,27 @@ export async function* generateCardsFromTextStream(
     return;
   }
 
-  const prompt = `Du bist ein Experte für das Erstellen von Vokabelkarten. 
+  const prompt = goal
+    ? `Ziel: ${goal}\n\nDu bist ein Experte für das Erstellen von Vokabelkarten. 
+Erstelle aus dem folgenden Text Vokabelkarten im Format:
+- Front: Das zu lernende Wort/Phrase in ${sourceLanguage}
+- Back: Die Übersetzung/Erklärung in ${targetLanguage}
+- Tags: Relevante Themen/Kategorien (optional, kommagetrennt)
+
+Text:
+${text}
+
+Antworte NUR mit einem JSON-Array im folgenden Format:
+[
+  {
+    "front": "Wort in ${sourceLanguage}",
+    "back": "Übersetzung in ${targetLanguage}",
+    "tags": "tag1, tag2"
+  }
+]
+
+Erstelle so viele Karten wie sinnvoll möglich. Fokussiere dich auf wichtige Vokabeln und Phrasen.`
+    : `Du bist ein Experte für das Erstellen von Vokabelkarten. 
 Erstelle aus dem folgenden Text Vokabelkarten im Format:
 - Front: Das zu lernende Wort/Phrase in ${sourceLanguage}
 - Back: Die Übersetzung/Erklärung in ${targetLanguage}
