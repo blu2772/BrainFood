@@ -14,7 +14,7 @@ const prisma = new PrismaClient();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10 MB
+    fileSize: 20 * 1024 * 1024, // 20 MB (erhöht für größere Dateien)
   },
   fileFilter: (req, file, cb) => {
     if (file.mimetype === "application/pdf") {

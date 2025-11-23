@@ -39,11 +39,20 @@ class SSEClient: NSObject, URLSessionDataDelegate {
         request.httpMethod = "POST"
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         
+        // WICHTIG: Content-Type wird von APIClient gesetzt, nicht überschreiben
+        // Nur wenn nicht in headers vorhanden, dann setzen
         if let body = body {
             request.httpBody = body
             requestBody = body
+            
+            // Prüfe ob Content-Type bereits in headers ist
+            if !headers.keys.contains(where: { $0.lowercased() == "content-type" }) {
+                // Content-Type sollte bereits vom APIClient gesetzt sein
+                // Falls nicht, wird es hier nicht gesetzt, da wir multipart/form-data brauchen
+            }
         }
         
+        // Setze alle Header (inkl. Content-Type von APIClient)
         for (key, value) in headers {
             request.setValue(value, forHTTPHeaderField: key)
         }

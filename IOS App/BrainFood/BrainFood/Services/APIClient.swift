@@ -408,6 +408,8 @@ class APIClient {
         if let token = getAuthToken() {
             headers["Authorization"] = "Bearer \(token)"
         }
+        // WICHTIG: Content-Type muss in headers sein, damit SSEClient es setzt
+        headers["Content-Type"] = "multipart/form-data; boundary=\(boundary)"
         
         let client = SSEClient(onEvent: onEvent, onError: onError)
         client.start(url: url, headers: headers, body: body)
