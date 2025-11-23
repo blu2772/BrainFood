@@ -211,14 +211,14 @@ class AICardsViewModel: ObservableObject {
                         }
                     case "content":
                         // Prüfe ob partialCards vorhanden sind (live erkannte Karten)
-                        if let partialCards = event.data?.partialCards as? [[String: Any]] {
+                        if let partialCards = event.data?.partialCards {
                             // Konvertiere zu CardSuggestion
                             let newCards = partialCards.compactMap { dict -> CardSuggestion? in
-                                guard let front = dict["front"] as? String,
-                                      let back = dict["back"] as? String else {
+                                guard let front = dict["front"]?.value as? String,
+                                      let back = dict["back"]?.value as? String else {
                                     return nil
                                 }
-                                let tags = dict["tags"] as? String
+                                let tags = dict["tags"]?.value as? String
                                 return CardSuggestion(front: front, back: back, tags: tags)
                             }
                             
@@ -322,14 +322,14 @@ class AICardsViewModel: ObservableObject {
                         }
                     case "content":
                         // Prüfe ob partialCards vorhanden sind (live erkannte Karten)
-                        if let partialCards = event.data?.partialCards as? [[String: Any]] {
+                        if let partialCards = event.data?.partialCards {
                             // Konvertiere zu CardSuggestion
                             let newCards = partialCards.compactMap { dict -> CardSuggestion? in
-                                guard let front = dict["front"] as? String,
-                                      let back = dict["back"] as? String else {
+                                guard let front = dict["front"]?.value as? String,
+                                      let back = dict["back"]?.value as? String else {
                                     return nil
                                 }
-                                let tags = dict["tags"] as? String
+                                let tags = dict["tags"]?.value as? String
                                 return CardSuggestion(front: front, back: back, tags: tags)
                             }
                             
@@ -433,7 +433,7 @@ class AICardsViewModel: ObservableObject {
                         print("   📊 Status: \(event.message)")
                     case "content":
                         // Prüfe ob partialCards vorhanden sind (live erkannte Karten)
-                        if let partialCards = event.data?.partialCards as? [[String: AnyCodable]] {
+                        if let partialCards = event.data?.partialCards {
                             // Konvertiere zu CardSuggestion
                             let newCards = partialCards.compactMap { dict -> CardSuggestion? in
                                 guard let front = dict["front"]?.value as? String,

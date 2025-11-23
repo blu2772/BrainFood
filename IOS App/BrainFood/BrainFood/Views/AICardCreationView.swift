@@ -65,6 +65,7 @@ struct AICardCreationView: View {
 
 struct GoalStepView: View {
     @ObservedObject var viewModel: AICardsViewModel
+    @FocusState private var isTextEditorFocused: Bool
     
     var body: some View {
         VStack(spacing: 24) {
@@ -86,6 +87,15 @@ struct GoalStepView: View {
                 .background(Color(.systemGray6))
                 .cornerRadius(10)
                 .padding(.horizontal)
+                .focused($isTextEditorFocused)
+                .toolbar {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("Fertig") {
+                            isTextEditorFocused = false
+                        }
+                    }
+                }
             
             // Kartenanzahl Slider
             VStack(alignment: .leading, spacing: 12) {
@@ -139,6 +149,7 @@ struct GoalStepView: View {
             Spacer()
             
             Button(action: {
+                isTextEditorFocused = false
                 viewModel.nextStep()
             }) {
                 Text("Weiter")
@@ -150,6 +161,10 @@ struct GoalStepView: View {
             }
             .disabled(viewModel.goal.isEmpty)
             .padding()
+        }
+        .onTapGesture {
+            // Schließe Tastatur wenn außerhalb des TextEditors getappt wird
+            isTextEditorFocused = false
         }
     }
 }

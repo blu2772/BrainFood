@@ -49,7 +49,7 @@ Erstelle so viele Karten wie sinnvoll möglich. Fokussiere dich auf wichtige Vok
           content: prompt,
         },
       ],
-      temperature: 0.7,
+      temperature: 1, // gpt-5-mini-2025-08-07 unterstützt nur temperature: 1
       response_format: { type: "json_object" },
     });
 

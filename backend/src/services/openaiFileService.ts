@@ -122,7 +122,7 @@ ${desiredCardCount && desiredCardCount > 0 ? `Erstelle maximal ${desiredCardCoun
           ],
         },
       ],
-      temperature: 0.7,
+          temperature: 1, // gpt-5-mini-2025-08-07 unterstützt nur temperature: 1
       stream: true,
     });
 
