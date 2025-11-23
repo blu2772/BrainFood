@@ -380,7 +380,13 @@ struct ProcessingStepView: View {
                     .transition(.opacity.combined(with: .scale))
                     .id(viewModel.currentStatus) // Force re-render on change
                 
-                if viewModel.currentStatus.isEmpty {
+                // Zeige Anzahl der erstellten Karten
+                if viewModel.cardsCreatedCount > 0 {
+                    Text("\(viewModel.cardsCreatedCount) Karte\(viewModel.cardsCreatedCount == 1 ? "" : "n") erstellt")
+                        .font(.subheadline)
+                        .foregroundColor(.blue)
+                        .fontWeight(.medium)
+                } else if viewModel.currentStatus.isEmpty {
                     Text("Dies kann einen Moment dauern")
                         .font(.subheadline)
                         .foregroundColor(.secondary)

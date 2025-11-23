@@ -138,30 +138,68 @@ Erstelle so viele Karten wie sinnvoll möglich. Fokussiere dich auf wichtige Vok
       return;
     }
 
-    // Normalisiere das Format
-    let cards: Array<{ front: string; back: string; tags?: string }> = [];
+    // Normalisiere das Format und validiere Karten
+    let rawCards: any[] = [];
     if (Array.isArray(parsed)) {
-      cards = parsed;
+      rawCards = parsed;
     } else if (parsed.cards && Array.isArray(parsed.cards)) {
-      cards = parsed.cards;
+      rawCards = parsed.cards;
     } else if (parsed.data && Array.isArray(parsed.data)) {
-      cards = parsed.data;
+      rawCards = parsed.data;
+    } else {
+      // Wenn das Format nicht erkannt wird, versuche es als einzelne Karte zu behandeln
+      if (parsed && typeof parsed === "object" && parsed.front && parsed.back) {
+        rawCards = [parsed];
+      } else {
+        yield {
+          type: "error",
+          message: "Ungültiges Format: Die KI hat keine Karten zurückgegeben",
+          data: { rawContent: fullContent.substring(0, 500) },
+        };
+        return;
+      }
+    }
+
+    // Validiere und filtere ungültige Karten
+    const validCards = rawCards
+      .map((card: any) => {
+        // Stelle sicher, dass front und back Strings sind
+        const front = typeof card.front === "string" ? card.front.trim() : String(card.front || "").trim();
+        const back = typeof card.back === "string" ? card.back.trim() : String(card.back || "").trim();
+        const tags = typeof card.tags === "string" ? card.tags.trim() : (card.tags ? String(card.tags).trim() : "");
+
+        // Prüfe ob front und back nicht leer sind
+        if (!front || !back) {
+          return null;
+        }
+
+        return {
+          front,
+          back,
+          tags,
+        };
+      })
+      .filter((card): card is { front: string; back: string; tags: string } => card !== null);
+
+    if (validCards.length === 0) {
+      yield {
+        type: "error",
+        message: "Keine gültigen Karten gefunden. Bitte versuche es erneut.",
+        data: { rawContent: fullContent.substring(0, 500) },
+      };
+      return;
     }
 
     yield { 
       type: "status", 
-      message: `✓ ${cards.length} Karten erfolgreich erstellt` 
+      message: `✓ ${validCards.length} Karte${validCards.length === 1 ? "" : "n"} erfolgreich erstellt` 
     };
-    onStatusUpdate?.(`✓ ${cards.length} Karten erfolgreich erstellt`);
+    onStatusUpdate?.(`✓ ${validCards.length} Karten erfolgreich erstellt`);
 
     yield { 
       type: "done", 
       message: "Fertig",
-      data: { cards: cards.map((card) => ({
-        front: card.front || "",
-        back: card.back || "",
-        tags: card.tags || "",
-      })) }
+      data: { cards: validCards }
     };
   } catch (error: any) {
     console.error("OpenAI Streaming Error:", error);

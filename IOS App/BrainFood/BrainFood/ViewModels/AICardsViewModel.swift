@@ -21,6 +21,7 @@ class AICardsViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var currentStatus: String = ""
     @Published var processingProgress: Double = 0.0
+    @Published var cardsCreatedCount: Int = 0 // Anzahl der erstellten Karten
     
     private let apiClient = APIClient.shared
     let boxId: String
@@ -86,6 +87,7 @@ class AICardsViewModel: ObservableObject {
         errorMessage = nil
         currentStatus = "Starte Verarbeitung..."
         processingProgress = 0.0
+        cardsCreatedCount = 0
         
         var allCards: [CardSuggestion] = []
         var processedSources = 0
@@ -159,13 +161,31 @@ class AICardsViewModel: ObservableObject {
                     switch event.type {
                     case "status":
                         self.currentStatus = event.message
+                        // Aktualisiere Kartenanzahl wenn in Status-Meldung enthalten
+                        if event.message.contains("Karten") || event.message.contains("Karte") {
+                            // Extrahiere Zahl aus Status-Meldung falls vorhanden
+                            let components = event.message.components(separatedBy: CharacterSet.decimalDigits.inverted)
+                            if let numberString = components.first(where: { !$0.isEmpty }),
+                               let number = Int(numberString) {
+                                self.cardsCreatedCount = number
+                            }
+                        }
                     case "content":
                         if let partial = event.data?.partial {
                             self.currentStatus = "KI schreibt: \(partial.prefix(50))..."
                         }
                     case "done":
                         if let cards = event.data?.cards {
-                            completion(cards)
+                            // Validiere und filtere ungültige Karten
+                            let validCards = cards.filter { card in
+                                guard !card.front.trimmingCharacters(in: .whitespaces).isEmpty,
+                                      !card.back.trimmingCharacters(in: .whitespaces).isEmpty else {
+                                    return false
+                                }
+                                return true
+                            }
+                            self.cardsCreatedCount += validCards.count
+                            completion(validCards)
                         } else {
                             completion([])
                         }
@@ -202,13 +222,31 @@ class AICardsViewModel: ObservableObject {
                     switch event.type {
                     case "status":
                         self.currentStatus = event.message
+                        // Aktualisiere Kartenanzahl wenn in Status-Meldung enthalten
+                        if event.message.contains("Karten") || event.message.contains("Karte") {
+                            // Extrahiere Zahl aus Status-Meldung falls vorhanden
+                            let components = event.message.components(separatedBy: CharacterSet.decimalDigits.inverted)
+                            if let numberString = components.first(where: { !$0.isEmpty }),
+                               let number = Int(numberString) {
+                                self.cardsCreatedCount = number
+                            }
+                        }
                     case "content":
                         if let partial = event.data?.partial {
                             self.currentStatus = "KI schreibt: \(partial.prefix(50))..."
                         }
                     case "done":
                         if let cards = event.data?.cards {
-                            completion(cards)
+                            // Validiere und filtere ungültige Karten
+                            let validCards = cards.filter { card in
+                                guard !card.front.trimmingCharacters(in: .whitespaces).isEmpty,
+                                      !card.back.trimmingCharacters(in: .whitespaces).isEmpty else {
+                                    return false
+                                }
+                                return true
+                            }
+                            self.cardsCreatedCount += validCards.count
+                            completion(validCards)
                         } else {
                             completion([])
                         }
