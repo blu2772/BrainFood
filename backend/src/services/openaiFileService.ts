@@ -113,8 +113,8 @@ Erstelle so viele Karten wie sinnvoll möglich.`;
       stream: true,
     });
 
-    yield { type: "status", message: `KI generiert Karten aus ${fileType}...` };
-    onStatusUpdate?.(`KI generiert Karten...`);
+    yield { type: "status", message: "KI generiert Karten aus Bild..." };
+    onStatusUpdate?.("KI generiert Karten...");
 
     let fullContent = "";
     let buffer = "";
