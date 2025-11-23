@@ -98,11 +98,13 @@ class AICardsViewModel: ObservableObject {
             guard processedSources < totalSources else {
                 // Alle Quellen verarbeitet
                 processingProgress = 1.0
-                currentStatus = "✓ Fertig! \(allCards.count) Karten erstellt"
+                // Nutze suggestedCards statt allCards, da live erkannte Karten bereits dort sind
+                let finalCount = self.suggestedCards.count
+                currentStatus = "✓ Fertig! \(finalCount) Karten erstellt"
                 
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    self.suggestedCards = allCards
-                    self.selectedCards = Set(allCards.map { $0.id })
+                    // Stelle sicher, dass alle Karten ausgewählt sind
+                    self.selectedCards = Set(self.suggestedCards.map { $0.id })
                     self.currentStep = .review
                     self.isProcessing = false
                 }
@@ -117,6 +119,13 @@ class AICardsViewModel: ObservableObject {
             case .text:
                 if let text = source.content {
                     processTextSource(text: text) { cards in
+                        // Füge finale Karten hinzu (falls noch nicht durch Live-Parsing erkannt)
+                        for card in cards {
+                            if !self.suggestedCards.contains(where: { $0.front == card.front && $0.back == card.back }) {
+                                self.suggestedCards.append(card)
+                                self.selectedCards.insert(card.id)
+                            }
+                        }
                         allCards.append(contentsOf: cards)
                         processedSources += 1
                         processNextSource()
@@ -128,6 +137,13 @@ class AICardsViewModel: ObservableObject {
             case .pdf:
                 if let pdfData = source.data {
                     processPDFSource(pdfData: pdfData) { cards in
+                        // Füge finale Karten hinzu (falls noch nicht durch Live-Parsing erkannt)
+                        for card in cards {
+                            if !self.suggestedCards.contains(where: { $0.front == card.front && $0.back == card.back }) {
+                                self.suggestedCards.append(card)
+                                self.selectedCards.insert(card.id)
+                            }
+                        }
                         allCards.append(contentsOf: cards)
                         processedSources += 1
                         processNextSource()
@@ -158,9 +174,12 @@ class AICardsViewModel: ObservableObject {
                 guard let self = self else { return }
                 
                 DispatchQueue.main.async {
+                    print("📨 [AICardsViewModel] Event empfangen (Text): type=\(event.type), message=\(event.message.prefix(100))")
+                    
                     switch event.type {
                     case "status":
                         self.currentStatus = event.message
+                        print("   📊 Status: \(event.message)")
                         // Aktualisiere Kartenanzahl wenn in Status-Meldung enthalten
                         if event.message.contains("Karten") || event.message.contains("Karte") {
                             // Extrahiere Zahl aus Status-Meldung falls vorhanden
@@ -168,28 +187,68 @@ class AICardsViewModel: ObservableObject {
                             if let numberString = components.first(where: { !$0.isEmpty }),
                                let number = Int(numberString) {
                                 self.cardsCreatedCount = number
+                                print("   🔢 Kartenanzahl aktualisiert: \(number)")
                             }
                         }
                     case "content":
-                        if let partial = event.data?.partial {
+                        // Prüfe ob partialCards vorhanden sind (live erkannte Karten)
+                        if let partialCards = event.data?.partialCards as? [[String: Any]] {
+                            // Konvertiere zu CardSuggestion
+                            let newCards = partialCards.compactMap { dict -> CardSuggestion? in
+                                guard let front = dict["front"] as? String,
+                                      let back = dict["back"] as? String else {
+                                    return nil
+                                }
+                                let tags = dict["tags"] as? String
+                                return CardSuggestion(front: front, back: back, tags: tags)
+                            }
+                            
+                            // Füge neue Karten hinzu (nur wenn noch nicht vorhanden)
+                            for card in newCards {
+                                if !self.suggestedCards.contains(where: { $0.front == card.front && $0.back == card.back }) {
+                                    self.suggestedCards.append(card)
+                                    self.selectedCards.insert(card.id)
+                                }
+                            }
+                            
+                            self.cardsCreatedCount = self.suggestedCards.count
+                            self.currentStatus = "KI generiert... (\(self.cardsCreatedCount) Karte\(self.cardsCreatedCount == 1 ? "" : "n") erkannt)"
+                            print("   📦 Live: \(newCards.count) neue Karten erkannt, Gesamt: \(self.cardsCreatedCount)")
+                        } else if let partial = event.data?.partial {
                             self.currentStatus = "KI schreibt: \(partial.prefix(50))..."
+                            print("   ✍️ Content: \(partial.prefix(100))...")
                         }
                     case "done":
+                        print("🟢 [AICardsViewModel] 'done' Event empfangen (Text)")
                         if let cards = event.data?.cards {
+                            print("   📦 \(cards.count) Karten im Event")
+                            
                             // Validiere und filtere ungültige Karten
                             let validCards = cards.filter { card in
-                                guard !card.front.trimmingCharacters(in: .whitespaces).isEmpty,
-                                      !card.back.trimmingCharacters(in: .whitespaces).isEmpty else {
-                                    return false
+                                let isValid = !card.front.trimmingCharacters(in: .whitespaces).isEmpty &&
+                                            !card.back.trimmingCharacters(in: .whitespaces).isEmpty
+                                if !isValid {
+                                    print("   ⚠️ Ungültige Karte gefiltert: front='\(card.front.prefix(30))...' back='\(card.back.prefix(30))...'")
                                 }
-                                return true
+                                return isValid
                             }
+                            print("   ✅ \(validCards.count) gültige Karten nach Validierung")
                             self.cardsCreatedCount += validCards.count
                             completion(validCards)
                         } else {
+                            print("   ⚠️ Keine Karten im 'done' Event")
                             completion([])
                         }
                     case "error":
+                        print("❌ [AICardsViewModel] Error Event (Text):")
+                        print("   Message: \(event.message)")
+                        if let errorData = event.data?.error {
+                            print("   Error Data: \(errorData)")
+                        }
+                        if let rawContent = event.data?.rawContent {
+                            print("   Raw Content (erste 500 Zeichen):")
+                            print("   \(rawContent.prefix(500))")
+                        }
                         self.errorMessage = event.message
                         self.currentStatus = "❌ \(event.message)"
                         completion([])
@@ -201,6 +260,7 @@ class AICardsViewModel: ObservableObject {
             onError: { [weak self] error in
                 guard let self = self else { return }
                 DispatchQueue.main.async {
+                    print("❌ [AICardsViewModel] Network Error (Text): \(error.localizedDescription)")
                     self.errorMessage = error.localizedDescription
                     self.currentStatus = "❌ Fehler: \(error.localizedDescription)"
                     completion([])
@@ -210,6 +270,7 @@ class AICardsViewModel: ObservableObject {
     }
     
     private func processPDFSource(pdfData: Data, completion: @escaping ([CardSuggestion]) -> Void) {
+        print("🚀 [AICardsViewModel] Starte PDF-Verarbeitung (Größe: \(pdfData.count) bytes)")
         apiClient.suggestCardsStream(
             boxId: boxId,
             goal: goal.isEmpty ? nil : goal,
@@ -219,9 +280,12 @@ class AICardsViewModel: ObservableObject {
                 guard let self = self else { return }
                 
                 DispatchQueue.main.async {
+                    print("📨 [AICardsViewModel] Event empfangen (PDF): type=\(event.type), message=\(event.message.prefix(100))")
+                    
                     switch event.type {
                     case "status":
                         self.currentStatus = event.message
+                        print("   📊 Status: \(event.message)")
                         // Aktualisiere Kartenanzahl wenn in Status-Meldung enthalten
                         if event.message.contains("Karten") || event.message.contains("Karte") {
                             // Extrahiere Zahl aus Status-Meldung falls vorhanden
@@ -229,28 +293,68 @@ class AICardsViewModel: ObservableObject {
                             if let numberString = components.first(where: { !$0.isEmpty }),
                                let number = Int(numberString) {
                                 self.cardsCreatedCount = number
+                                print("   🔢 Kartenanzahl aktualisiert: \(number)")
                             }
                         }
                     case "content":
-                        if let partial = event.data?.partial {
+                        // Prüfe ob partialCards vorhanden sind (live erkannte Karten)
+                        if let partialCards = event.data?.partialCards as? [[String: Any]] {
+                            // Konvertiere zu CardSuggestion
+                            let newCards = partialCards.compactMap { dict -> CardSuggestion? in
+                                guard let front = dict["front"] as? String,
+                                      let back = dict["back"] as? String else {
+                                    return nil
+                                }
+                                let tags = dict["tags"] as? String
+                                return CardSuggestion(front: front, back: back, tags: tags)
+                            }
+                            
+                            // Füge neue Karten hinzu (nur wenn noch nicht vorhanden)
+                            for card in newCards {
+                                if !self.suggestedCards.contains(where: { $0.front == card.front && $0.back == card.back }) {
+                                    self.suggestedCards.append(card)
+                                    self.selectedCards.insert(card.id)
+                                }
+                            }
+                            
+                            self.cardsCreatedCount = self.suggestedCards.count
+                            self.currentStatus = "KI generiert... (\(self.cardsCreatedCount) Karte\(self.cardsCreatedCount == 1 ? "" : "n") erkannt)"
+                            print("   📦 Live: \(newCards.count) neue Karten erkannt, Gesamt: \(self.cardsCreatedCount)")
+                        } else if let partial = event.data?.partial {
                             self.currentStatus = "KI schreibt: \(partial.prefix(50))..."
+                            print("   ✍️ Content: \(partial.prefix(100))...")
                         }
                     case "done":
+                        print("🟢 [AICardsViewModel] 'done' Event empfangen (PDF)")
                         if let cards = event.data?.cards {
+                            print("   📦 \(cards.count) Karten im Event")
+                            
                             // Validiere und filtere ungültige Karten
                             let validCards = cards.filter { card in
-                                guard !card.front.trimmingCharacters(in: .whitespaces).isEmpty,
-                                      !card.back.trimmingCharacters(in: .whitespaces).isEmpty else {
-                                    return false
+                                let isValid = !card.front.trimmingCharacters(in: .whitespaces).isEmpty &&
+                                            !card.back.trimmingCharacters(in: .whitespaces).isEmpty
+                                if !isValid {
+                                    print("   ⚠️ Ungültige Karte gefiltert: front='\(card.front.prefix(30))...' back='\(card.back.prefix(30))...'")
                                 }
-                                return true
+                                return isValid
                             }
+                            print("   ✅ \(validCards.count) gültige Karten nach Validierung")
                             self.cardsCreatedCount += validCards.count
                             completion(validCards)
                         } else {
+                            print("   ⚠️ Keine Karten im 'done' Event")
                             completion([])
                         }
                     case "error":
+                        print("❌ [AICardsViewModel] Error Event (PDF):")
+                        print("   Message: \(event.message)")
+                        if let errorData = event.data?.error {
+                            print("   Error Data: \(errorData)")
+                        }
+                        if let rawContent = event.data?.rawContent {
+                            print("   Raw Content (erste 500 Zeichen):")
+                            print("   \(rawContent.prefix(500))")
+                        }
                         self.errorMessage = event.message
                         self.currentStatus = "❌ \(event.message)"
                         completion([])
@@ -262,6 +366,7 @@ class AICardsViewModel: ObservableObject {
             onError: { [weak self] error in
                 guard let self = self else { return }
                 DispatchQueue.main.async {
+                    print("❌ [AICardsViewModel] Network Error (PDF): \(error.localizedDescription)")
                     self.errorMessage = error.localizedDescription
                     self.currentStatus = "❌ Fehler: \(error.localizedDescription)"
                     completion([])

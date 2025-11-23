@@ -26,45 +26,55 @@ export async function* generateCardsFromTextStream(
     return;
   }
 
+  // Bestimme Kartentyp basierend auf Ziel
+  const isVocabularyRequest = goal?.toLowerCase().includes("vokabel") || 
+                             goal?.toLowerCase().includes("übersetzung") ||
+                             goal?.toLowerCase().includes("wort");
+  
+  const cardTypeInstruction = isVocabularyRequest
+    ? `Erstelle VOKABELKARTEN (Übersetzungen):
+- Front: Das zu lernende Wort/Phrase in ${sourceLanguage}
+- Back: Die Übersetzung in ${targetLanguage}`
+    : `Erstelle LERNKARTEN zu den Themen/Inhalten:
+- Front: Eine Frage oder ein Begriff zum Thema
+- Back: Die Antwort, Erklärung oder Definition
+- Wichtig: Erstelle Frage-Antwort-Paare, die helfen, das Thema zu verstehen und zu lernen`;
+
   const prompt = goal
-    ? `Ziel: ${goal}\n\nDu bist ein Experte für das Erstellen von Vokabelkarten. 
-Erstelle aus dem folgenden Text Vokabelkarten im Format:
-- Front: Das zu lernende Wort/Phrase in ${sourceLanguage}
-- Back: Die Übersetzung/Erklärung in ${targetLanguage}
+    ? `Ziel: ${goal}
+
+Du bist ein Experte für das Erstellen von Lernkarten. ${cardTypeInstruction}
 - Tags: Relevante Themen/Kategorien (optional, kommagetrennt)
 
-Text:
+Text/Inhalt:
 ${text}
 
 Antworte NUR mit einem JSON-Array im folgenden Format:
 [
   {
-    "front": "Wort in ${sourceLanguage}",
-    "back": "Übersetzung in ${targetLanguage}",
+    "front": "${isVocabularyRequest ? "Wort in " + sourceLanguage : "Frage oder Begriff"}",
+    "back": "${isVocabularyRequest ? "Übersetzung in " + targetLanguage : "Antwort oder Erklärung"}",
     "tags": "tag1, tag2"
   }
 ]
 
-Erstelle so viele Karten wie sinnvoll möglich. Fokussiere dich auf wichtige Vokabeln und Phrasen.`
-    : `Du bist ein Experte für das Erstellen von Vokabelkarten. 
-Erstelle aus dem folgenden Text Vokabelkarten im Format:
-- Front: Das zu lernende Wort/Phrase in ${sourceLanguage}
-- Back: Die Übersetzung/Erklärung in ${targetLanguage}
+Erstelle so viele Karten wie sinnvoll möglich. ${isVocabularyRequest ? "Fokussiere dich auf wichtige Vokabeln und Phrasen." : "Fokussiere dich auf wichtige Konzepte, Definitionen und Zusammenhänge."}`
+    : `Du bist ein Experte für das Erstellen von Lernkarten. ${cardTypeInstruction}
 - Tags: Relevante Themen/Kategorien (optional, kommagetrennt)
 
-Text:
+Text/Inhalt:
 ${text}
 
 Antworte NUR mit einem JSON-Array im folgenden Format:
 [
   {
-    "front": "Wort in ${sourceLanguage}",
-    "back": "Übersetzung in ${targetLanguage}",
+    "front": "${isVocabularyRequest ? "Wort in " + sourceLanguage : "Frage oder Begriff"}",
+    "back": "${isVocabularyRequest ? "Übersetzung in " + targetLanguage : "Antwort oder Erklärung"}",
     "tags": "tag1, tag2"
   }
 ]
 
-Erstelle so viele Karten wie sinnvoll möglich. Fokussiere dich auf wichtige Vokabeln und Phrasen.`;
+Erstelle so viele Karten wie sinnvoll möglich. ${isVocabularyRequest ? "Fokussiere dich auf wichtige Vokabeln und Phrasen." : "Fokussiere dich auf wichtige Konzepte, Definitionen und Zusammenhänge."}`;
 
   try {
     yield { type: "status", message: "Verbinde mit OpenAI..." };
@@ -91,6 +101,94 @@ Erstelle so viele Karten wie sinnvoll möglich. Fokussiere dich auf wichtige Vok
 
     let fullContent = "";
     let buffer = "";
+    let partialCards: Array<{ front: string; back: string; tags?: string }> = [];
+    let lastParsedIndex = 0;
+
+    // Hilfsfunktion zum Extrahieren von JSON-Objekten aus einem String
+    const tryParsePartialJSON = (content: string): Array<{ front: string; back: string; tags?: string }> => {
+      const cards: Array<{ front: string; back: string; tags?: string }> = [];
+      
+      // Entferne Markdown-Code-Blöcke falls vorhanden
+      let jsonContent = content.trim();
+      if (jsonContent.startsWith("```json")) {
+        jsonContent = jsonContent.substring(7).trim();
+      } else if (jsonContent.startsWith("```")) {
+        jsonContent = jsonContent.substring(3).trim();
+      }
+      
+      // Versuche, vollständige JSON-Objekte zu finden
+      let depth = 0;
+      let inString = false;
+      let escapeNext = false;
+      let currentObj = "";
+      let braceCount = 0;
+      
+      for (let i = 0; i < jsonContent.length; i++) {
+        const char = jsonContent[i];
+        
+        if (escapeNext) {
+          escapeNext = false;
+          currentObj += char;
+          continue;
+        }
+        
+        if (char === '\\') {
+          escapeNext = true;
+          currentObj += char;
+          continue;
+        }
+        
+        if (char === '"' && !escapeNext) {
+          inString = !inString;
+        }
+        
+        if (!inString) {
+          if (char === '[') {
+            depth++;
+          } else if (char === ']') {
+            depth--;
+            if (depth === 0 && currentObj.trim()) {
+              // Versuche, das Array zu parsen
+              try {
+                const parsed = JSON.parse("[" + currentObj + "]");
+                if (Array.isArray(parsed)) {
+                  cards.push(...parsed.filter((c: any) => c && c.front && c.back));
+                }
+              } catch (e) {
+                // Ignoriere Parse-Fehler bei unvollständigem JSON
+              }
+              currentObj = "";
+            }
+          } else if (char === '{') {
+            if (depth === 1) {
+              currentObj = "";
+            }
+            braceCount++;
+            currentObj += char;
+          } else if (char === '}') {
+            braceCount--;
+            currentObj += char;
+            if (depth === 1 && braceCount === 0) {
+              // Versuche, das Objekt zu parsen
+              try {
+                const parsed = JSON.parse(currentObj);
+                if (parsed && parsed.front && parsed.back) {
+                  cards.push(parsed);
+                }
+              } catch (e) {
+                // Ignoriere Parse-Fehler bei unvollständigem JSON
+              }
+            }
+          } else {
+            currentObj += char;
+          }
+        } else {
+          currentObj += char;
+        }
+      }
+      
+      return cards;
+    };
 
     for await (const chunk of stream) {
       const content = chunk.choices[0]?.delta?.content || "";
@@ -99,13 +197,28 @@ Erstelle so viele Karten wie sinnvoll möglich. Fokussiere dich auf wichtige Vok
         fullContent += content;
         buffer += content;
         
-        // Sende Content-Updates (alle 50 Zeichen)
-        if (buffer.length > 50) {
-          yield { 
-            type: "content", 
-            message: "KI schreibt...",
-            data: { partial: buffer.substring(0, 100) } // Erste 100 Zeichen als Preview
-          };
+        // Versuche, neue vollständige Karten aus dem Buffer zu parsen
+        if (buffer.length > 100) {
+          const newCards = tryParsePartialJSON(buffer);
+          if (newCards.length > partialCards.length) {
+            partialCards = newCards;
+            const newCount = partialCards.length;
+            yield {
+              type: "content",
+              message: `KI generiert... (${newCount} Karte${newCount === 1 ? "" : "n"} erkannt)`,
+              data: { 
+                partial: buffer.substring(0, 100),
+                partialCards: partialCards.slice(lastParsedIndex) // Nur neue Karten
+              }
+            };
+            lastParsedIndex = partialCards.length;
+          } else {
+            yield { 
+              type: "content", 
+              message: "KI schreibt...",
+              data: { partial: buffer.substring(0, 100) }
+            };
+          }
           buffer = "";
         }
       }
@@ -126,9 +239,24 @@ Erstelle so viele Karten wie sinnvoll möglich. Fokussiere dich auf wichtige Vok
     yield { type: "status", message: "Parse JSON-Antwort..." };
     onStatusUpdate?.("Parse JSON-Antwort...");
 
+    // Entferne Markdown-Code-Blöcke falls vorhanden (```json ... ```)
+    let jsonContent = fullContent.trim();
+    
+    // Entferne ```json am Anfang
+    if (jsonContent.startsWith("```json")) {
+      jsonContent = jsonContent.substring(7).trim();
+    } else if (jsonContent.startsWith("```")) {
+      jsonContent = jsonContent.substring(3).trim();
+    }
+    
+    // Entferne ``` am Ende
+    if (jsonContent.endsWith("```")) {
+      jsonContent = jsonContent.substring(0, jsonContent.length - 3).trim();
+    }
+
     let parsed: any;
     try {
-      parsed = JSON.parse(fullContent);
+      parsed = JSON.parse(jsonContent);
     } catch (e: any) {
       yield { 
         type: "error", 

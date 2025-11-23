@@ -445,12 +445,26 @@ struct ReviewStepView: View {
     @State private var dragOffset: CGSize = .zero
     @State private var dragAngle: Double = 0
     
+    // Berechnete Property für sicheren Zugriff auf aktuelle Karte
+    private var currentCard: CardSuggestion? {
+        guard currentIndex >= 0 && currentIndex < viewModel.suggestedCards.count else {
+            return nil
+        }
+        return viewModel.suggestedCards[currentIndex]
+    }
+    
     var body: some View {
         VStack(spacing: 20) {
             // Progress Indicator
             HStack {
-                Text("\(currentIndex + 1) / \(viewModel.suggestedCards.count)")
-                    .font(.headline)
+                if viewModel.suggestedCards.isEmpty {
+                    Text("Keine Karten")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                } else {
+                    Text("\(min(currentIndex + 1, viewModel.suggestedCards.count)) / \(viewModel.suggestedCards.count)")
+                        .font(.headline)
+                }
                 Spacer()
                 Text("\(viewModel.selectedCards.count) ausgewählt")
                     .font(.subheadline)
@@ -458,84 +472,113 @@ struct ReviewStepView: View {
             }
             .padding()
             
-            // Card Stack
-            ZStack {
-                ForEach(Array(viewModel.suggestedCards.enumerated()), id: \.element.id) { index, card in
-                    if index >= currentIndex && index < currentIndex + 3 {
-                        CardPreviewView(
-                            card: card,
-                            isSelected: viewModel.selectedCards.contains(card.id),
-                            offset: index == currentIndex ? dragOffset : .zero,
-                            angle: index == currentIndex ? dragAngle : 0,
-                            onToggle: {
-                                viewModel.toggleCardSelection(card.id)
-                            },
-                            onDragChanged: { translation in
-                                dragOffset = translation
-                                dragAngle = Double(translation.width / 20)
-                            },
-                            onDragEnded: { translation in
-                                let threshold: CGFloat = 100
-                                if abs(translation.width) > threshold {
-                                    // Swipe left (next) or right (previous)
-                                    if translation.width > 0 && currentIndex > 0 {
-                                        currentIndex -= 1
-                                    } else if translation.width < 0 && currentIndex < viewModel.suggestedCards.count - 1 {
-                                        currentIndex += 1
+            // Card Stack oder Empty State
+            if viewModel.suggestedCards.isEmpty {
+                VStack(spacing: 20) {
+                    Image(systemName: "tray")
+                        .font(.system(size: 60))
+                        .foregroundColor(.secondary)
+                    Text("Keine Karten gefunden")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                    Text("Die KI konnte keine gültigen Karten erstellen.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(height: 400)
+                .frame(maxWidth: .infinity)
+                .padding()
+            } else {
+                ZStack {
+                    ForEach(Array(viewModel.suggestedCards.enumerated()), id: \.element.id) { index, card in
+                        if index >= currentIndex && index < currentIndex + 3 && index < viewModel.suggestedCards.count {
+                            CardPreviewView(
+                                card: card,
+                                isSelected: viewModel.selectedCards.contains(card.id),
+                                offset: index == currentIndex ? dragOffset : .zero,
+                                angle: index == currentIndex ? dragAngle : 0,
+                                onToggle: {
+                                    viewModel.toggleCardSelection(card.id)
+                                },
+                                onDragChanged: { translation in
+                                    dragOffset = translation
+                                    dragAngle = Double(translation.width / 20)
+                                },
+                                onDragEnded: { translation in
+                                    let threshold: CGFloat = 100
+                                    if abs(translation.width) > threshold {
+                                        // Swipe left (next) or right (previous)
+                                        if translation.width > 0 && currentIndex > 0 {
+                                            currentIndex = max(0, currentIndex - 1)
+                                        } else if translation.width < 0 && currentIndex < viewModel.suggestedCards.count - 1 {
+                                            currentIndex = min(viewModel.suggestedCards.count - 1, currentIndex + 1)
+                                        }
                                     }
+                                    dragOffset = .zero
+                                    dragAngle = 0
                                 }
-                                dragOffset = .zero
-                                dragAngle = 0
-                            }
-                        )
-                        .zIndex(Double(viewModel.suggestedCards.count - index))
-                        .opacity(index == currentIndex ? 1 : 0.7)
-                        .scaleEffect(index == currentIndex ? 1 : 0.9)
+                            )
+                            .zIndex(Double(viewModel.suggestedCards.count - index))
+                            .opacity(index == currentIndex ? 1 : 0.7)
+                            .scaleEffect(index == currentIndex ? 1 : 0.9)
+                        }
                     }
                 }
+                .frame(height: 400)
+                .padding()
             }
-            .frame(height: 400)
-            .padding()
             
             // Actions
-            HStack(spacing: 20) {
-                Button(action: {
-                    if currentIndex > 0 {
-                        currentIndex -= 1
+            if !viewModel.suggestedCards.isEmpty {
+                HStack(spacing: 20) {
+                    Button(action: {
+                        if currentIndex > 0 {
+                            currentIndex = max(0, currentIndex - 1)
+                        }
+                    }) {
+                        Image(systemName: "arrow.left")
+                            .font(.title2)
+                            .frame(width: 60, height: 60)
+                            .background(Color(.systemGray5))
+                            .foregroundColor(.primary)
+                            .clipShape(Circle())
                     }
-                }) {
-                    Image(systemName: "arrow.left")
-                        .font(.title2)
-                        .frame(width: 60, height: 60)
-                        .background(Color(.systemGray5))
-                        .foregroundColor(.primary)
-                        .clipShape(Circle())
-                }
-                .disabled(currentIndex == 0)
-                
-                Button(action: {
-                    viewModel.toggleCardSelection(viewModel.suggestedCards[currentIndex].id)
-                }) {
-                    Image(systemName: viewModel.selectedCards.contains(viewModel.suggestedCards[currentIndex].id) ? "checkmark.circle.fill" : "circle")
-                        .font(.title)
-                        .foregroundColor(viewModel.selectedCards.contains(viewModel.suggestedCards[currentIndex].id) ? .green : .gray)
-                }
-                
-                Button(action: {
-                    if currentIndex < viewModel.suggestedCards.count - 1 {
-                        currentIndex += 1
+                    .disabled(currentIndex == 0 || viewModel.suggestedCards.isEmpty)
+                    
+                    Button(action: {
+                        if let card = currentCard {
+                            viewModel.toggleCardSelection(card.id)
+                        }
+                    }) {
+                        if let card = currentCard {
+                            Image(systemName: viewModel.selectedCards.contains(card.id) ? "checkmark.circle.fill" : "circle")
+                                .font(.title)
+                                .foregroundColor(viewModel.selectedCards.contains(card.id) ? .green : .gray)
+                        } else {
+                            Image(systemName: "circle")
+                                .font(.title)
+                                .foregroundColor(.gray)
+                        }
                     }
-                }) {
-                    Image(systemName: "arrow.right")
-                        .font(.title2)
-                        .frame(width: 60, height: 60)
-                        .background(Color(.systemGray5))
-                        .foregroundColor(.primary)
-                        .clipShape(Circle())
+                    .disabled(currentCard == nil)
+                    
+                    Button(action: {
+                        if currentIndex < viewModel.suggestedCards.count - 1 {
+                            currentIndex = min(viewModel.suggestedCards.count - 1, currentIndex + 1)
+                        }
+                    }) {
+                        Image(systemName: "arrow.right")
+                            .font(.title2)
+                            .frame(width: 60, height: 60)
+                            .background(Color(.systemGray5))
+                            .foregroundColor(.primary)
+                            .clipShape(Circle())
+                    }
+                    .disabled(currentIndex >= viewModel.suggestedCards.count - 1 || viewModel.suggestedCards.isEmpty)
                 }
-                .disabled(currentIndex >= viewModel.suggestedCards.count - 1)
+                .padding()
             }
-            .padding()
             
             // Save Button
             Button(action: {
@@ -544,7 +587,7 @@ struct ReviewStepView: View {
                     dismiss()
                 }
             }) {
-                Text("\(viewModel.selectedCards.count) Karten speichern")
+                Text("\(viewModel.selectedCards.count) Karte\(viewModel.selectedCards.count == 1 ? "" : "n") speichern")
                     .frame(maxWidth: .infinity)
                     .padding()
                     .background(viewModel.selectedCards.isEmpty ? Color.gray : Color.blue)
@@ -553,6 +596,22 @@ struct ReviewStepView: View {
             }
             .disabled(viewModel.selectedCards.isEmpty)
             .padding()
+        }
+        .onChange(of: viewModel.suggestedCards.count) { oldCount, newCount in
+            // Stelle sicher, dass currentIndex immer gültig ist
+            if newCount == 0 {
+                currentIndex = 0
+            } else if currentIndex >= newCount {
+                currentIndex = max(0, newCount - 1)
+            }
+        }
+        .onAppear {
+            // Stelle sicher, dass currentIndex beim Erscheinen gültig ist
+            if viewModel.suggestedCards.isEmpty {
+                currentIndex = 0
+            } else if currentIndex >= viewModel.suggestedCards.count {
+                currentIndex = max(0, viewModel.suggestedCards.count - 1)
+            }
         }
     }
 }
